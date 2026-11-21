@@ -1,0 +1,48 @@
+# 示例配置：把 apiKeyEnv 指向你自己的环境变量即可。
+version: 1
+
+defaults:
+  caching: auto
+  retry: { maxAttempts: 3 }
+
+providers:
+  - id: deepseek
+    interfaceType: openai-chat-completions
+    baseUrl: https://api.deepseek.com/v1
+    apiKeyEnv: DEEPSEEK_API_KEY
+    includeUsage: true
+  - id: claude
+    interfaceType: anthropic-messages
+    baseUrl: https://api.anthropic.com/v1
+    apiKeyEnv: ANTHROPIC_API_KEY
+    caching: explicit
+
+families:
+  - id: deepseek
+    match: ['deepseek-']
+    provider: deepseek
+    contextWindow: 1000000
+    maxOutput: 65536
+    capabilities:
+      tools: true
+      thinking: [enabled, disabled]
+      effort: [low, medium, high]
+      thinkingStyle: thinking
+      reasoningContent: true
+  - id: claude
+    match: ['claude-']
+    provider: claude
+    contextWindow: 256000
+    maxOutput: 64000
+    capabilities:
+      tools: true
+      thinking: [enabled, disabled]
+      thinkingStyle: extended
+
+models:
+  - id: deepseek-reasoner
+    provider: deepseek
+    family: deepseek
+    upstream: deepseek-reasoner
+    contextWindow: 128000
+    maxOutput: 65536

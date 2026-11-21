@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>llm-api 配置参考实现</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <strong>llm-api</strong>
+      <span class="muted">配置参考实现</span>
+    </div>
+    <div class="muted" id="config-path"></div>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="config" class="active">配置</button>
+    <button data-tab="models">模型</button>
+    <button data-tab="chat">对话</button>
+  </nav>
+
+  <main>
+    <section data-panel="config" class="panel active">
+      <div class="row">
+        <button id="validate">校验</button>
+        <button id="apply" class="primary">应用</button>
+        <button id="save">写回文件</button>
+        <span class="muted" id="status"></span>
+      </div>
+      <div class="split">
+        <textarea id="editor" spellcheck="false"></textarea>
+        <div class="side">
+          <h3>诊断</h3>
+          <ul id="diagnostics" class="list"></ul>
+          <p class="hint">密钥只显示掩码；保留掩码或留空表示不修改。</p>
+        </div>
+      </div>
+    </section>
+
+    <section data-panel="models" class="panel">
+      <div class="row">
+        <label>端点
+          <select id="discover-provider"></select>
+        </label>
+        <button id="discover">发现模型</button>
+        <span class="muted">候选不会自动写入配置</span>
+      </div>
+      <div class="split">
+        <div>
+          <h3>已声明模型</h3>
+          <table id="models-table">
+            <thead><tr><th>id</th><th>端点</th><th>协议</th><th>上下文</th><th>来源</th><th>状态</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="side">
+          <h3>家族（未声明模型时的回退）</h3>
+          <ul id="families" class="list"></ul>
+          <h3>发现候选</h3>
+          <ul id="candidates" class="list"></ul>
+        </div>
+      </div>
+    </section>
+
+    <section data-panel="chat" class="panel">
+      <div class="row">
+        <label>模型 <input id="chat-model" list="model-options" placeholder="deepseek-reasoner 或 deepseek/deepseek-chat" /></label>
+        <label>maxTokens <input id="chat-max" type="number" min="1" placeholder="不填则不发送" /></label>
+      </div>
+      <datalist id="model-options"></datalist>
+      <label class="block">system <textarea id="chat-system" rows="2" placeholder="留空则不发送 system"></textarea></label>
+      <label class="block">prompt <textarea id="chat-prompt" rows="3" placeholder="说点什么"></textarea></label>
+      <div class="row"><button id="send" class="primary">发送（流式）</button><button id="clear">清空</button></div>
+      <pre id="chat-log" class="log"></pre>
+    </section>
+  </main>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

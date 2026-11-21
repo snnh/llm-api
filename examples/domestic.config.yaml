@@ -1,0 +1,65 @@
+# 国内模型方言矩阵：同一套库，只靠配置适配。
+# 换成你自己的端点/密钥即可；模型名按各家的真实 id 写。
+version: 1
+
+providers:
+  - id: deepseek
+    interfaceType: openai-chat-completions
+    baseUrl: https://api.deepseek.com/v1
+    apiKeyEnv: DEEPSEEK_API_KEY
+  - id: zhipu
+    interfaceType: anthropic-messages
+    baseUrl: https://open.bigmodel.cn/api/anthropic
+    apiKeyEnv: ZHIPU_API_KEY
+    caching: auto
+  - id: qwen
+    interfaceType: openai-chat-completions
+    baseUrl: https://dashscope.aliyuncs.com/compatible-mode/v1
+    apiKeyEnv: DASHSCOPE_API_KEY
+  - id: moonshot
+    interfaceType: openai-chat-completions
+    baseUrl: https://api.moonshot.cn/v1
+    apiKeyEnv: MOONSHOT_API_KEY
+
+families:
+  - id: deepseek
+    match: ['deepseek-']
+    provider: deepseek
+    contextWindow: 1000000
+    capabilities:
+      tools: true
+      thinking: [enabled, disabled]
+      effort: [low, medium, high, xhigh, max]
+      thinkingStyle: thinking
+      reasoningContent: true
+  - id: glm
+    match: ['glm-']
+    provider: zhipu
+    contextWindow: 1000000
+    capabilities:
+      tools: true
+      thinking: [enabled, disabled]
+      thinkingStyle: thinking
+      deferLoading: true
+  - id: qwen
+    match: ['qwen']
+    provider: qwen
+    contextWindow: 256000
+    capabilities:
+      tools: true
+      thinking: [enabled, disabled]
+      thinkingStyle: enable_thinking
+  - id: kimi-k3
+    match: ['kimi-k3']
+    provider: moonshot
+    contextWindow: 1000000
+    capabilities:
+      tools: true
+      thinkingStyle: effort_only
+  - id: kimi-coding
+    match: ['kimi-for-coding']
+    provider: moonshot
+    contextWindow: 256000
+    capabilities:
+      tools: true
+      thinkingStyle: fixed

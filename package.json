@@ -1,0 +1,53 @@
+{
+  "name": "@snnh/llm-api",
+  "version": "0.1.0",
+  "description": "Config-defined, lightweight LLM API library: providers, model families and models described in data, not code.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "presets",
+    "examples",
+    "README.md",
+    "CHANGELOG.md",
+    "PLAN.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "pnpm build && node --test tests/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "example": "node examples/basic.mjs",
+    "web": "node examples/web/server.mjs",
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "pnpm run build"
+  },
+  "dependencies": {
+    "eventsource-parser": "^4.1.3",
+    "zod": "^4.6.7"
+  },
+  "peerDependencies": {
+    "yaml": "^2.9.1"
+  },
+  "peerDependenciesMeta": {
+    "yaml": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "yaml": "^2.9.1"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts"
+}

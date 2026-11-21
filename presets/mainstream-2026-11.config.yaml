@@ -1,0 +1,648 @@
+# 主流模型配置（核对日期：2026-11-21）
+#
+# 覆盖：DeepSeek V4、Qwen3.8、GLM-5.3、Kimi K3、MiniMax M3、ERNIE 5、腾讯混元、
+#      豆包（Ark）、StepFun、OpenAI GPT-6.2 / 6 / 6.1、Anthropic Claude 5.5、Google Gemini 4/3.8、
+#      DeepSeek Chat + Responses + Anthropic Messages、
+#      xAI Grok 4.7、Mistral Large 4，以及 OpenRouter 聚合与本地 Ollama。
+#
+# 用法：
+#   const config = loadConfig('presets/mainstream-2026-11.config.yaml')
+#   const llm = createLLM(config, { source: ... })
+#   llm.chat({ model: 'claude-opus-5-5', messages: [...] })
+#   也可写 'anthropic/claude-opus-5-5' 指定端点。
+#
+# 注意：
+# - 只声明已知事实；不确定的上下文/输出上限取保守值并在注释里标注。
+# - 本库不做价格统计，因此这里没有任何价格字段。
+# - 模型名以各家 2026-11 在售为准；下线后改 match/model 即可，不用改代码。
+# - `effort` 是 UI 提示，库不会做档位映射；请求里给什么就发什么。
+
+version: 1
+
+defaults:
+  caching: auto
+  retry: { maxAttempts: 3, statuses: [429, 500, 502, 503, 504] }
+  connectTimeoutMs: 30000
+  streamIdleTimeoutMs: 300000
+
+providers:
+  # ---------------------------------------------------------------- 国内
+  - id: deepseek
+    displayName: DeepSeek
+    interfaceType: openai-chat-completions
+    baseUrl: https://api.deepseek.com/v1
+    apiKeyEnv: DEEPSEEK_API_KEY
+    includeUsage: true
+
+  - id: deepseek-responses
+    displayName: DeepSeek Responses
+    interfaceType: openai-responses
+    baseUrl: https://api.deepseek.com
+    apiKeyEnv: DEEPSEEK_API_KEY
+
+  - id: deepseek-anthropic
+    displayName: DeepSeek Anthropic Messages
+    interfaceType: anthropic-messages
+    baseUrl: https://api.deepseek.com/anthropic
+    path: /v1/messages
+    apiKeyEnv: DEEPSEEK_API_KEY
+
+  - id: qwen
+    displayName: 阿里云百炼 Qwen
+    interfaceType: openai-chat-completions
+    baseUrl: https://dashscope.aliyuncs.com/compatible-mode/v1
+    apiKeyEnv: DASHSCOPE_API_KEY
+    includeUsage: true
+
+  - id: zhipu
+    displayName: 智谱 GLM（Anthropic 协议）
+    interfaceType: anthropic-messages
+    baseUrl: https://open.bigmodel.cn/api/anthropic
+    apiKeyEnv: ZHIPU_API_KEY
+    caching: auto            # GLM 服务端自动缓存，不打 cache_control 断点
+
+  - id: moonshot
+    displayName: 月之暗面 Kimi
+    interfaceType: openai-chat-completions
+    baseUrl: https://api.moonshot.cn/v1
+    apiKeyEnv: MOONSHOT_API_KEY
+    includeUsage: true
+
+  - id: minimax
+    displayName: MiniMax
+    interfaceType: openai-chat-completions
+    baseUrl: https://api.minimax.io/v1
+    apiKeyEnv: MINIMAX_API_KEY
+    includeUsage: true
+    compat: { maxTokensField: max_completion_tokens }   # 新版推荐字段
+
+  - id: baidu
+    displayName: 百度千帆 ERNIE
+    interfaceType: openai-chat-completions
+    baseUrl: https://qianfan.baidubce.com/v2
+    apiKeyEnv: QIANFAN_API_KEY
+
+  - id: tencent
+    displayName: 腾讯混元
+    interfaceType: openai-chat-completions
+    baseUrl: https://api.hunyuan.cloud.tencent.com/v1
+    apiKeyEnv: HUNYUAN_API_KEY
+
+  - id: bytedance
+    displayName: 火山方舟（豆包）
+    interfaceType: openai-chat-completions
+    baseUrl: https://ark.cn-beijing.volces.com/api/v3
+    apiKeyEnv: ARK_API_KEY
+
+  - id: stepfun
+    displayName: 阶跃星辰
+    interfaceType: openai-chat-completions
+    baseUrl: https://api.stepfun.com/v1
+    apiKeyEnv: STEPFUN_API_KEY
+
+  # ---------------------------------------------------------------- 海外
+  - id: openai
+    displayName: OpenAI
+    interfaceType: openai-responses
+    baseUrl: https://api.openai.com/v1
+    apiKeyEnv: OPENAI_API_KEY
+
+  - id: anthropic
+    displayName: Anthropic
+    interfaceType: anthropic-messages
+    baseUrl: https://api.anthropic.com/v1
+    apiKeyEnv: ANTHROPIC_API_KEY
+    caching: explicit        # 官方支持显式 cache_control 断点
+
+  - id: google
+    displayName: Google Gemini（OpenAI 兼容端点）
+    interfaceType: openai-chat-completions
+    baseUrl: https://generativelanguage.googleapis.com/v1beta/openai
+    apiKeyEnv: GEMINI_API_KEY
+    includeUsage: true
+
+  - id: xai
+    displayName: xAI Grok
+    interfaceType: openai-chat-completions
+    baseUrl: https://api.x.ai/v1
+    apiKeyEnv: XAI_API_KEY
+    includeUsage: true
+
+  - id: mistral
+    displayName: Mistral
+    interfaceType: openai-chat-completions
+    baseUrl: https://api.mistral.ai/v1
+    apiKeyEnv: MISTRAL_API_KEY
+    compat: { maxTokensField: max_completion_tokens }
+
+  # ---------------------------------------------------------------- 聚合 / 本地
+  - id: openrouter
+    displayName: OpenRouter
+    interfaceType: openai-chat-completions
+    baseUrl: https://openrouter.ai/api/v1
+    apiKeyEnv: OPENROUTER_API_KEY
+    includeUsage: true
+    # 用 OpenRouter 时请显式传 provider: 'openrouter'，否则 'anthropic/...' 会走直连端点。
+
+  - id: ollama
+    displayName: 本地 Ollama
+    interfaceType: openai-chat-completions
+    baseUrl: http://127.0.0.1:11434/v1
+    apiKey: ollama            # 本地服务通常不校验 key，但兼容层要求非空
+
+families:
+  # ---------------------------------------------------------------- DeepSeek
+  - id: deepseek-v4
+    match: ['deepseek-v4']
+    provider: deepseek
+    contextWindow: 1000000
+    maxOutput: 384000
+    capabilities:
+      tools: true
+      modalities: [text]
+      thinking: [enabled, disabled]
+      effort: [none, low, medium, high, xhigh, max]
+      thinkingStyle: thinking
+      reasoningContent: true
+      deferLoading: true       # V4 支持动态工具加载
+
+  - id: deepseek-responses
+    match: ['deepseek-flash']
+    provider: deepseek-responses
+    contextWindow: 1000000
+    maxOutput: 384000
+    capabilities:
+      tools: true
+      modalities: [text, image]  # flash 支持视觉；pro 在模型条目里收回
+      effort: [none, low, high, max]
+      thinkingStyle: effort_only
+      reasoningContent: true     # 回放 plain-text reasoning item
+
+  - id: deepseek-anthropic
+    match: ['deepseek-flash-anthropic', 'deepseek-v4-pro-anthropic']
+    provider: deepseek-anthropic
+    contextWindow: 1000000
+    maxOutput: 384000
+    capabilities:
+      tools: true
+      modalities: [text, image]  # flash 支持视觉；pro 在模型条目里收回
+      thinking: [enabled, disabled]
+      effort: [low, high, max]
+      thinkingStyle: thinking
+      outputConfigEffort: true   # thinking + output_config.effort
+
+  - id: deepseek-reasoner
+    match: ['deepseek-reasoner']
+    provider: deepseek
+    contextWindow: 128000
+    maxOutput: 65536
+    capabilities:
+      tools: true
+      thinking: [enabled, disabled]
+      thinkingStyle: thinking
+      reasoningContent: true
+
+  # ---------------------------------------------------------------- Qwen
+  - id: qwen3.8
+    match: ['qwen3.8', 'qwen-flash']
+    provider: qwen
+    contextWindow: 1000000
+    maxOutput: 65536
+    capabilities:
+      tools: true
+      modalities: [text, image, video]
+      thinking: [enabled, disabled]
+      thinkingStyle: enable_thinking
+
+  - id: qwen3.7
+    match: ['qwen3.7']
+    provider: qwen
+    contextWindow: 1000000
+    maxOutput: 65536
+    capabilities:
+      tools: true
+      modalities: [text, image]
+      thinking: [enabled, disabled]
+      thinkingStyle: enable_thinking
+
+  - id: qwen-coder
+    match: ['qwen3-coder']
+    provider: qwen
+    contextWindow: 1000000
+    maxOutput: 65536
+    capabilities: { tools: true, thinkingStyle: enable_thinking }
+
+  # ---------------------------------------------------------------- GLM（走 Anthropic 协议）
+  - id: glm-5.3
+    match: ['glm-5.3']
+    provider: zhipu
+    contextWindow: 1000000
+    maxOutput: 128000
+    capabilities:
+      tools: true
+      thinking: [enabled, disabled]
+      effort: [low, high, max]
+      thinkingStyle: fixed     # 思考恒开；给 effort 时原样下发 reasoning_effort
+      deferLoading: true
+
+  - id: glm-5.2
+    match: ['glm-5.2']
+    provider: zhipu
+    contextWindow: 1000000
+    maxOutput: 128000
+    capabilities:
+      tools: true
+      thinking: [enabled, disabled]
+      effort: [low, high, max]
+      thinkingStyle: thinking
+      deferLoading: true
+
+  - id: glm-5
+    match: ['glm-5', 'glm-4']
+    provider: zhipu
+    contextWindow: 1000000
+    maxOutput: 128000
+    capabilities:
+      tools: true
+      thinking: [enabled, disabled]
+      effort: [low, high, max]
+      thinkingStyle: thinking
+
+  # ---------------------------------------------------------------- Kimi
+  - id: kimi-k3
+    match: ['kimi-k3']
+    provider: moonshot
+    contextWindow: 1000000
+    maxOutput: 128000
+    capabilities:
+      tools: true
+      modalities: [text, image]
+      effort: [low, high, max]
+      thinkingStyle: effort_only   # 始终推理，只收 reasoning_effort
+      deferLoading: true           # 动态工具加载
+      reasoningContent: true
+
+  - id: kimi-k2.7
+    match: ['kimi-k2.7']
+    provider: moonshot
+    contextWindow: 256000
+    maxOutput: 65536
+    capabilities:
+      tools: true
+      modalities: [text, image, video]
+      thinking: [enabled, disabled]
+      thinkingStyle: thinking
+      reasoningContent: true
+
+  - id: kimi-k2.6
+    match: ['kimi-k2.6']
+    provider: moonshot
+    contextWindow: 256000
+    maxOutput: 65536
+    capabilities:
+      tools: true
+      modalities: [text, image, video]
+      thinking: [enabled, disabled]
+      thinkingStyle: thinking
+      reasoningContent: true
+
+  - id: kimi-for-coding
+    match: ['kimi-for-coding']
+    provider: moonshot
+    contextWindow: 256000
+    maxOutput: 65536
+    capabilities:
+      tools: true
+      thinkingStyle: fixed
+      reasoningContent: true
+
+  # ---------------------------------------------------------------- MiniMax
+  - id: minimax-m3.1
+    match: ['MiniMax-M3.1']
+    provider: minimax
+    contextWindow: 1000000
+    maxOutput: 128000
+    capabilities:
+      tools: true
+      modalities: [text, image, video]
+      effort: [low, medium, high, xhigh, max]
+      thinkingStyle: effort_only   # 思考恒开，用 reasoning_effort 调深度
+      reasoningContent: true
+
+  - id: minimax-m3
+    match: ['MiniMax-M3']
+    provider: minimax
+    contextWindow: 1000000
+    maxOutput: 128000
+    capabilities:
+      tools: true
+      modalities: [text, image, video]
+      thinking: [adaptive, disabled]
+      thinkingStyle: thinking
+      reasoningContent: true
+
+  - id: minimax-m2
+    match: ['MiniMax-M2']
+    provider: minimax
+    contextWindow: 256000
+    maxOutput: 65536
+    capabilities: { tools: true, modalities: [text, image], reasoningContent: true }
+
+  # ---------------------------------------------------------------- 百度
+  - id: ernie-5
+    match: ['ernie-5']
+    provider: baidu
+    contextWindow: 256000
+    maxOutput: 65536
+    capabilities:
+      tools: true
+      modalities: [text, image, video]
+      thinking: [enabled, disabled]
+      thinkingStyle: thinking
+
+  - id: ernie-4.5-vl
+    match: ['ernie-4.5']
+    provider: baidu
+    contextWindow: 256000
+    maxOutput: 65536
+    capabilities: { tools: true, modalities: [text, image, video] }
+
+  # ---------------------------------------------------------------- 腾讯 / 豆包 / 阶跃
+  - id: hunyuan
+    match: ['hy3', 'hy4', 'hunyuan']
+    provider: tencent
+    contextWindow: 256000
+    maxOutput: 65536
+    capabilities: { tools: true, modalities: [text, image] }
+
+  - id: doubao
+    match: ['doubao-']
+    provider: bytedance
+    contextWindow: 256000
+    maxOutput: 65536
+    capabilities: { tools: true, modalities: [text, image, video] }
+    # 具体模型 ID 以方舟控制台/`llm.discover('bytedance')` 为准。
+
+  - id: stepfun
+    match: ['step-']
+    provider: stepfun
+    contextWindow: 256000
+    maxOutput: 65536
+    capabilities: { tools: true }
+
+  # ---------------------------------------------------------------- OpenAI
+  - id: gpt-6
+    match: ['gpt-6']
+    provider: openai
+    contextWindow: 1050000
+    maxOutput: 128000
+    capabilities:
+      tools: true
+      modalities: [text, image]
+      effort: [low, medium, high]
+      thinkingStyle: effort_only
+      responsesEncryptedReplay: true
+
+  - id: gpt-6.2
+    match: ['gpt-6.2']
+    provider: openai
+    contextWindow: 1050000
+    maxOutput: 128000
+    capabilities:
+      tools: true
+      modalities: [text, image]
+      effort: [low, medium, high, xhigh, max]   # none / minimal 会被 400
+      thinking: [enabled]                       # 推理常开，无法关闭
+      thinkingStyle: effort_only
+      responsesEncryptedReplay: true
+      unsupportedParams: [temperature, topP, top_p, topLogprobs, top_logprobs, logprobs]  # 官方：reasoning effort 非 none 时移除；仅建议，不拦截
+    # 最大输入 922K；工具调用只能走 Responses，family 已绑定 openai-responses
+
+  - id: gpt-5
+    match: ['gpt-5', 'o3', 'o4']
+    provider: openai
+    contextWindow: 400000
+    maxOutput: 128000
+    capabilities:
+      tools: true
+      modalities: [text, image]
+      effort: [low, medium, high]
+      thinkingStyle: effort_only
+      responsesEncryptedReplay: true
+
+  # ---------------------------------------------------------------- Anthropic
+  - id: claude-5
+    match: ['claude-']
+    provider: anthropic
+    contextWindow: 1000000
+    maxOutput: 128000
+    capabilities:
+      tools: true
+      modalities: [text, image]
+      thinking: [adaptive]
+      effort: [low, medium, high, xhigh, max]
+      thinkingStyle: adaptive      # 思考恒开，深度用 effort
+      reasoningContent: false
+
+  # ---------------------------------------------------------------- Google
+  - id: gemini-4
+    match: ['gemini-4']
+    provider: google
+    contextWindow: 1048576
+    maxOutput: 65536
+    capabilities:
+      tools: true
+      modalities: [text, image, video]
+      # Gemini 4 用 thinking_level；OpenAI 兼容层未统一，建议经 extra 传，
+      # 例如 extra: { thinking_level: 'high' }。
+
+  - id: gemini-3.8
+    match: ['gemini-3.8']
+    provider: google
+    contextWindow: 1000000
+    maxOutput: 65536
+    capabilities:
+      tools: true
+      modalities: [text, image, video]
+
+  # ---------------------------------------------------------------- xAI / Mistral
+  - id: grok
+    match: ['grok-']
+    provider: xai
+    contextWindow: 500000
+    maxOutput: 65536
+    capabilities:
+      tools: true
+      modalities: [text, image]
+      effort: [low, medium, high]
+      thinkingStyle: effort_only
+
+  - id: mistral
+    match: ['mistral-', 'magistral-']
+    provider: mistral
+    contextWindow: 1000000
+    maxOutput: 65536
+    capabilities: { tools: true, modalities: [text, image] }
+
+  # ---------------------------------------------------------------- OpenRouter（聚合）
+  # 显式 provider: 'openrouter' 使用；上下文取保守值。
+  - id: or-anthropic
+    match: ['anthropic/']
+    provider: openrouter
+    contextWindow: 1000000
+    maxOutput: 128000
+    capabilities: { tools: true, modalities: [text, image] }
+
+  - id: or-openai
+    match: ['openai/']
+    provider: openrouter
+    contextWindow: 400000
+    maxOutput: 128000
+    capabilities: { tools: true, modalities: [text, image], thinkingStyle: effort_only }
+
+  - id: or-google
+    match: ['google/']
+    provider: openrouter
+    contextWindow: 1048576
+    maxOutput: 65536
+    capabilities: { tools: true, modalities: [text, image, video] }
+
+  - id: or-chinese
+    match: ['deepseek/', 'qwen/', 'moonshotai/', 'z-ai/', 'minimax/']
+    provider: openrouter
+    contextWindow: 256000
+    maxOutput: 65536
+    capabilities: { tools: true, modalities: [text, image] }
+
+  # ---------------------------------------------------------------- 本地
+  - id: ollama-local
+    match: ['ollama/']
+    provider: ollama
+    contextWindow: 131072
+    maxOutput: 8192
+    capabilities: { tools: true }
+
+models:
+  # 只写需要覆盖家族上限/上下文的旗舰型号
+  - id: deepseek-v4.1-flash
+    provider: deepseek
+    family: deepseek-v4
+    upstream: deepseek-v4.1-flash
+    capabilities: { modalities: [text, image] }   # V4.1-Flash 原生视觉
+
+  - id: deepseek-flash
+    provider: deepseek-responses
+    family: deepseek-responses
+    upstream: deepseek-flash
+
+  - id: deepseek-v4-pro-responses
+    provider: deepseek-responses
+    family: deepseek-responses
+    upstream: deepseek-v4-pro
+    capabilities: { modalities: [text] }          # pro 不支持视觉
+
+  - id: deepseek-flash-anthropic
+    provider: deepseek-anthropic
+    family: deepseek-anthropic
+    upstream: deepseek-flash
+
+  - id: deepseek-v4-pro-anthropic
+    provider: deepseek-anthropic
+    family: deepseek-anthropic
+    upstream: deepseek-v4-pro
+    capabilities: { modalities: [text] }          # pro 不支持视觉
+
+  - id: deepseek-v4-pro
+    provider: deepseek
+    family: deepseek-v4
+    upstream: deepseek-v4-pro
+
+  - id: qwen3.8-max
+    provider: qwen
+    family: qwen3.8
+    upstream: qwen3.8-max
+
+  - id: qwen3.8-flash
+    provider: qwen
+    family: qwen3.8
+    upstream: qwen3.8-flash
+
+  - id: glm-5.3
+    provider: zhipu
+    family: glm-5.3
+    upstream: glm-5.3
+
+  - id: kimi-k3
+    provider: moonshot
+    family: kimi-k3
+    upstream: kimi-k3
+
+  - id: MiniMax-M3.1-Flash
+    provider: minimax
+    family: minimax-m3.1
+    upstream: MiniMax-M3.1-Flash
+
+  - id: claude-opus-5-5
+    provider: anthropic
+    family: claude-5
+    upstream: claude-opus-5-5
+
+  - id: claude-sonnet-5-5
+    provider: anthropic
+    family: claude-5
+    upstream: claude-sonnet-5-5
+
+  - id: claude-haiku-5-5
+    provider: anthropic
+    family: claude-5
+    upstream: claude-haiku-5-5
+
+  - id: claude-fable-5-2
+    provider: anthropic
+    family: claude-5
+    upstream: claude-fable-5-2
+
+  - id: gpt-6.2-astra
+    provider: openai
+    family: gpt-6.2
+    upstream: gpt-6.2-astra
+
+  - id: gpt-6.2-sol
+    provider: openai
+    family: gpt-6.2
+    upstream: gpt-6.2-sol
+
+  - id: gpt-6-astra
+    provider: openai
+    family: gpt-6
+    upstream: gpt-6-astra
+
+  - id: gpt-6.1-sol
+    provider: openai
+    family: gpt-6
+    upstream: gpt-6.1-sol
+
+  - id: gpt-6-luna
+    provider: openai
+    family: gpt-6
+    upstream: gpt-6-luna
+
+  - id: gemini-4-argon
+    provider: google
+    family: gemini-4
+    upstream: gemini-4-argon
+
+  - id: gemini-3.8-flash
+    provider: google
+    family: gemini-3.8
+    upstream: gemini-3.8-flash
+
+  - id: grok-4.7
+    provider: xai
+    family: grok
+    upstream: grok-4.7
+
+  - id: mistral-large-4
+    provider: mistral
+    family: mistral
+    upstream: mistral-large-4-0
