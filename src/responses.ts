@@ -9,7 +9,7 @@ import {
   type AdapterContext,
   type Emit,
 } from './adapter.ts';
-import { buildHeaders, maxTokensValue, resolveApiKey } from './params.ts';
+import { buildHeaders, maxTokensValue, mergeBody, resolveApiKey } from './params.ts';
 import { classifyStatus, openStream, readSse, requestJson, type RawEvent } from './transport.ts';
 import type { ChatRequest, ContentPart } from './types.ts';
 
@@ -154,7 +154,7 @@ function buildBody(ctx: AdapterContext): Record<string, unknown> {
   const topP = request.topP ?? effective.defaults.topP;
   if (temperature !== undefined) core.temperature = temperature;
   if (topP !== undefined) core[effective.fieldMap.topP ?? 'top_p'] = topP;
-  return { ...effective.extraBody, ...core, ...(request.extra ?? {}) };
+  return mergeBody(effective, request, core);
 }
 
 interface UsageState {

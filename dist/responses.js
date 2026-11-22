@@ -1,6 +1,6 @@
 import { LLMError } from "./errors.js";
 import { EMPTY_USAGE, joinUrl, num, obj, str, } from "./adapter.js";
-import { buildHeaders, maxTokensValue, resolveApiKey } from "./params.js";
+import { buildHeaders, maxTokensValue, mergeBody, resolveApiKey } from "./params.js";
 import { classifyStatus, openStream, readSse, requestJson } from "./transport.js";
 /** OpenAI Responses rejects max_output_tokens values below 16. */
 export const MIN_OUTPUT_TOKENS = 16;
@@ -156,7 +156,7 @@ function buildBody(ctx) {
         core.temperature = temperature;
     if (topP !== undefined)
         core[effective.fieldMap.topP ?? 'top_p'] = topP;
-    return { ...effective.extraBody, ...core, ...(request.extra ?? {}) };
+    return mergeBody(effective, request, core);
 }
 function usageFrom(value) {
     const usage = obj(value);
