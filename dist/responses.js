@@ -633,6 +633,11 @@ export const responsesAdapter = {
             if (aggregate)
                 emit({ type: 'text_end', text: aggregate });
         }
+        // 端点只给 reasoning delta、缺 output_item.done 时，仍把已累积的思维链收尾。
+        for (const acc of state.reasoningAccums.values()) {
+            if (acc.text)
+                emit({ type: 'thinking_end', text: acc.text });
+        }
         if (state.usage.seen)
             emit({ type: 'usage', ...state.usage });
         else
