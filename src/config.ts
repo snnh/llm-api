@@ -92,7 +92,7 @@ const provider = z
     fieldMap: z.record(z.string(), z.string()).optional(),
     family: z.string().optional(),
     maxConcurrent: z.number().int().positive().optional(),
-    streamIdleTimeoutMs: z.number().int().positive().optional(),
+    streamIdleTimeoutMs: z.number().int().nonnegative().optional(),
     connectTimeoutMs: z.number().int().positive().optional(),
     retry: retry.optional(),
     discover: discover.optional(),
@@ -157,7 +157,7 @@ export const llmConfigSchema = z
       .object({
         caching: caching.optional(),
         connectTimeoutMs: z.number().int().positive().optional(),
-        streamIdleTimeoutMs: z.number().int().positive().optional(),
+        streamIdleTimeoutMs: z.number().int().nonnegative().optional(),
         retry: retry.optional(),
       })
       .loose()
