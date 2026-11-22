@@ -10,7 +10,8 @@
 
 详细设计与决策记录见 [PLAN.md](./PLAN.md)，版本记录见 [CHANGELOG.md](./CHANGELOG.md)。
 
-> 当前尚未发布 npm；先按本地路径或 git 安装，发布后再补 `@snnh/llm-api` 的 npm 安装说明。
+> 当前尚未发布 npm；git 依赖安装时仓库内附带 `dist/`（`npm ci --ignore-scripts` 也能直接用），
+> 发布后再补 `@snnh/llm-api` 的 npm 安装说明。
 
 ## 安装与构建
 

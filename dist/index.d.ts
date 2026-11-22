@@ -1,0 +1,10 @@
+import { configJsonSchema, loadConfig, parseConfig, saveConfigFile } from './config.ts';
+import type { ApplyResult, ChangeEvent, CreateOptions, Diagnostic, LLM, LLMConfig, ModelView, ProviderConfig, ProviderView } from './types.ts';
+export declare function createLLM(input: LLMConfig | unknown, opts?: CreateOptions): LLM;
+export { loadConfig, configJsonSchema, saveConfigFile, parseConfig };
+export { LLMError, isLLMError } from './errors.ts';
+export type { ErrorCode } from './errors.ts';
+export type * from './types.ts';
+export type { EffectiveModel } from './config.ts';
+export { ConfigState } from './config.ts';
+export type { ProviderConfig, ProviderView, ModelView, Diagnostic, ApplyResult, ChangeEvent };
