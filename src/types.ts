@@ -195,6 +195,9 @@ export interface Thinking {
   blocks?: ThinkingBlock[];
   /** Responses API: provider-encrypted reasoning payload, replayed verbatim. */
   encrypted?: string;
+  /** Responses API: complete reasoning item as returned by the endpoint (id/status/
+   * summary/content/encrypted_content). Use this when exact replay matters. */
+  item?: Record<string, unknown>;
 }
 
 export interface PromptCacheOptions {
@@ -255,6 +258,8 @@ export interface ChatRequest {
   model: string;
   provider?: string;
   system?: string;
+  /** Dynamic system tail: stable prefix must stay byte-identical for prompt caching. */
+  systemSuffix?: string;
   messages: Message[];
   tools?: ToolDef[];
   deferredTools?: string[];
@@ -276,6 +281,14 @@ export interface ChatRequest {
   promptCacheOptions?: PromptCacheOptions;
   /** Responses API only: separate cache accounting key. */
   promptCacheKey?: string;
+  /** Responses API only: append the built-in `web_search` tool. */
+  serverWebSearch?: boolean;
+  /** Extra request headers for this call (e.g. a dynamic User-Agent). */
+  headers?: Record<string, string>;
+  /** Pre-built protocol body. When set the adapter sends it verbatim instead of
+   * mapping `system`/`messages`/`tools`; auth, retry, timeout and event parsing
+   * still go through the library. Callers are responsible for protocol validity. */
+  rawBody?: Record<string, unknown>;
   extra?: Record<string, unknown>;
   signal?: AbortSignal;
   /** Any other key is passed through to the request body verbatim. */
@@ -293,11 +306,31 @@ export type StopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'refusal' | 'e
 
 export type LLMEvent =
   | { type: 'text_delta'; text: string }
-  | { type: 'text_end'; text: string; signature?: string }
+  | {
+      type: 'text_end';
+      text: string;
+      /** Opaque caller-owned signature (e.g. an OWC message item id). */
+      signature?: string;
+      /** Responses API: the authoritative `message` item id. */
+      itemId?: string;
+      /** Responses API: the message item phase, when provided by the endpoint. */
+      phase?: string;
+    }
   | { type: 'thinking_delta'; text: string }
-  | { type: 'thinking_end'; text: string; signature?: string; redacted?: string; encrypted?: string; block?: ThinkingBlock }
+  | {
+      type: 'thinking_end';
+      text: string;
+      signature?: string;
+      redacted?: string;
+      encrypted?: string;
+      block?: ThinkingBlock;
+      /** Responses API: complete reasoning item, suitable for exact replay. */
+      item?: Record<string, unknown>;
+    }
   | { type: 'tool_call_delta'; id: string; name?: string; argumentsDelta: string }
   | { type: 'tool_call'; id: string; name: string; input: Record<string, unknown>; itemId?: string; async?: boolean }
+  | { type: 'server_tool'; tool: string; phase: 'start' | 'update' | 'end' }
+  | { type: 'web_search_call'; item: Record<string, unknown> }
   | ({ type: 'usage' } & Usage)
   | { type: 'done'; stopReason: StopReason }
   | { type: 'error'; error: import('./errors.ts').LLMError };
@@ -372,6 +405,8 @@ export interface ModelCandidate {
 
 export interface CreateOptions {
   env?: Record<string, string | undefined>;
+  /** Override the global fetch implementation (tests / host integration). */
+  fetch?: typeof fetch;
   /** Unknown fields become errors instead of warnings. */
   strict?: boolean;
   /** File the config was loaded from; `save()` writes back to it. */

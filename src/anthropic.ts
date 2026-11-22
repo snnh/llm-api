@@ -213,7 +213,7 @@ interface BlockState {
   args: string;
 }
 
-function parseBlock(index: number, data: unknown, emit: Emit, blocks: Map<number, BlockState>, state: { usage: Usage; stopReason?: string }) {
+function parseBlock(index: number, data: unknown, emit: Emit, blocks: Map<number, BlockState>, state: { usage: Usage; stopReason?: string; sawStreamEnd?: boolean }) {
   const json = obj(data);
   const type = str(json?.type);
   if (type === 'message_start') {
@@ -283,6 +283,10 @@ function parseBlock(index: number, data: unknown, emit: Emit, blocks: Map<number
     const stop = str(obj(json?.delta)?.stop_reason);
     if (stop) state.stopReason = stop;
     state.usage = usageFrom(json?.usage, state.usage);
+    return;
+  }
+  if (type === 'message_stop') {
+    state.sawStreamEnd = true;
     return;
   }
   if (type === 'error') {
@@ -361,10 +365,12 @@ export const anthropicAdapter: Adapter = {
   async run(ctx: AdapterContext, emit: Emit): Promise<void> {
     const { effective, stream } = ctx;
     const apiKey = resolveApiKey(effective, ctx.env);
-    const headers = buildHeaders(effective, apiKey);
+    const headers = buildHeaders(effective, apiKey, ctx.request.headers);
     addBetas(headers, midConversationBetas(ctx.request));
     const url = joinUrl(effective.baseUrl, effective.path, '/messages', effective.query);
-    const body = buildBody(ctx);
+    const body = ctx.request.rawBody
+      ? { ...ctx.request.rawBody, ...(stream ? { stream: true } : {}) }
+      : buildBody(ctx);
     const spec = {
       url,
       headers,
@@ -375,6 +381,7 @@ export const anthropicAdapter: Adapter = {
       provider: effective.providerId,
       model: effective.id,
       errors: effective.errors,
+      ...(ctx.fetch ? { fetch: ctx.fetch } : {}),
       ...(ctx.signal ? { signal: ctx.signal } : {}),
     };
 
@@ -406,7 +413,7 @@ export const anthropicAdapter: Adapter = {
     }
 
     const blocks = new Map<number, BlockState>();
-    const state = { usage: { ...EMPTY_USAGE }, stopReason: undefined as string | undefined };
+    const state = { usage: { ...EMPTY_USAGE }, stopReason: undefined as string | undefined, sawStreamEnd: false };
     const onEvent = (event: RawEvent): void => {
       ctx.onRawEvent?.(event.data);
       let data: unknown;
@@ -420,6 +427,11 @@ export const anthropicAdapter: Adapter = {
     };
     await readSse(handle, { ...spec }, onEvent);
     emit({ type: 'usage', ...state.usage });
-    emit({ type: 'done', stopReason: mapStopReason(state.stopReason) });
+    emit({
+      type: 'done',
+      stopReason: state.stopReason
+        ? mapStopReason(state.stopReason)
+        : state.sawStreamEnd ? 'end_turn' : 'error',
+    });
   },
 };

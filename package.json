@@ -29,7 +29,7 @@
     "example": "node examples/basic.mjs",
     "web": "node examples/web/server.mjs",
     "build": "tsc -p tsconfig.build.json",
-    "prepare": "pnpm run build"
+    "prepare": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
     "eventsource-parser": "^4.1.3",

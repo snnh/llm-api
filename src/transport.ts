@@ -9,6 +9,8 @@ export interface TransportConfig {
   provider?: string;
   model?: string;
   errors?: Record<string, string>;
+  /** Upper bound for a single SSE data payload. Defaults to 8 MiB. */
+  maxEventBytes?: number;
 }
 
 export interface RequestSpec extends TransportConfig {
@@ -17,6 +19,8 @@ export interface RequestSpec extends TransportConfig {
   headers: Record<string, string>;
   body?: unknown;
   signal?: AbortSignal;
+  /** Optional fetch override; defaults to globalThis.fetch. */
+  fetch?: typeof fetch;
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -103,7 +107,7 @@ async function fetchOnce(spec: RequestSpec, extraSignals: AbortSignal[] = []): P
   const combined = AbortSignal.any(signals);
   const timer = setTimeout(() => connect.abort(new Error('connect timeout')), spec.connectTimeoutMs);
   try {
-    return await fetch(spec.url, {
+    return await (spec.fetch ?? fetch)(spec.url, {
       method: spec.method ?? 'POST',
       headers: spec.headers,
       ...(spec.body === undefined ? {} : { body: JSON.stringify(spec.body) }),
@@ -171,6 +175,7 @@ export async function openStream(spec: RequestSpec): Promise<StreamHandle> {
   const response = await open(spec, true, [local.signal]);
   let idleTimer: NodeJS.Timeout | undefined;
   const arm = () => {
+    if (spec.streamIdleTimeoutMs <= 0) return;
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => local.abort(new Error('stream idle timeout')), spec.streamIdleTimeoutMs);
     idleTimer.unref?.();
@@ -191,6 +196,8 @@ export interface RawEvent {
   data: string;
 }
 
+const DEFAULT_MAX_EVENT_BYTES = 8 * 1024 * 1024;
+
 export async function readSse(
   handle: StreamHandle,
   spec: RequestSpec,
@@ -198,21 +205,31 @@ export async function readSse(
 ): Promise<void> {
   const body = handle.response.body;
   if (!body) throw new LLMError('TRANSPORT', '响应没有可读的流', { ...spec });
+  const maxEventBytes = spec.maxEventBytes ?? DEFAULT_MAX_EVENT_BYTES;
   const parser = createParser({
     onEvent: (event) => {
+      // Only data events reset the watchdog: proxy heartbeat comments must not
+      // keep a half-open stream alive.
+      handle.touch();
+      if (event.data.length > maxEventBytes) {
+        throw new LLMError('TRANSPORT', `SSE 事件超过 ${maxEventBytes} 字节上限`, {
+          ...(spec.provider ? { provider: spec.provider } : {}),
+          ...(spec.model ? { model: spec.model } : {}),
+        });
+      }
       void onEvent({ ...(event.event ? { event: event.event } : {}), data: event.data });
     },
   });
   const decoder = new TextDecoder();
   try {
     for await (const chunk of body as unknown as AsyncIterable<Uint8Array>) {
-      handle.touch();
       parser.feed(decoder.decode(chunk, { stream: true }));
     }
     parser.feed(decoder.decode());
     parser.reset({ consume: true });
   } catch (cause) {
     if (spec.signal?.aborted) throw abortedError(spec.signal);
+    if (cause instanceof LLMError) throw cause;
     throw new LLMError('TRANSPORT', cause instanceof Error ? cause.message : '流中断', {
       ...(spec.provider ? { provider: spec.provider } : {}),
       ...(spec.model ? { model: spec.model } : {}),

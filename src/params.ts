@@ -7,7 +7,7 @@ export const CORE_BODY_KEYS = ['model', 'messages', 'stream', 'tools', 'system',
 const NORMALIZED_KEYS = new Set([
   'model', 'provider', 'system', 'messages', 'tools', 'deferredTools', 'thinking', 'effort',
   'thinkingBudgetTokens', 'configurationUpdates', 'maxTokens', 'temperature', 'topP', 'topK', 'stop', 'seed', 'jsonMode',
-  'cacheBreakpoints', 'promptCacheOptions', 'promptCacheKey', 'extra', 'signal',
+  'cacheBreakpoints', 'promptCacheOptions', 'promptCacheKey', 'serverWebSearch', 'headers', 'rawBody', 'extra', 'signal',
 ]);
 
 export function isPresent(value: unknown): boolean {

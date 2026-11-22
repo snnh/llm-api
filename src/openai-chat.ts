@@ -133,6 +133,8 @@ function usageFrom(value: unknown): Usage | undefined {
 
 interface StreamState {
   done: boolean;
+  sawStreamEnd: boolean;
+  sawOutput: boolean;
   usage?: Usage;
   finishReason?: string;
   text: string;
@@ -142,6 +144,7 @@ interface StreamState {
 function parseChunk(effective: AdapterContext['effective'], data: string, emit: Emit, pending: Map<number, PendingTool>, state: StreamState) {
   if (data === '[DONE]') {
     state.done = true;
+    state.sawStreamEnd = true;
     return;
   }
   let parsed: unknown;
@@ -161,11 +164,13 @@ function parseChunk(effective: AdapterContext['effective'], data: string, emit: 
   const delta = obj(choice.delta) ?? {};
   const content = delta.content;
   if (typeof content === 'string' && content.length > 0) {
+    state.sawOutput = true;
     state.text += content;
     emit({ type: 'text_delta', text: content });
   }
   const reasoning = str(delta.reasoning_content) ?? str(delta.reasoning);
   if (reasoning) {
+    state.sawOutput = true;
     state.thinking += reasoning;
     emit({ type: 'thinking_delta', text: reasoning });
   }
@@ -182,6 +187,7 @@ function parseChunk(effective: AdapterContext['effective'], data: string, emit: 
       const argsDelta = str(fn.arguments) ?? '';
       current.args += argsDelta;
       pending.set(index, current);
+      state.sawOutput = true;
       emit({
         type: 'tool_call_delta',
         id: current.id,
@@ -193,6 +199,21 @@ function parseChunk(effective: AdapterContext['effective'], data: string, emit: 
   const finish = str(choice.finish_reason);
   if (finish) state.finishReason = finish;
   void effective;
+}
+
+/** finish_reason 缺失/未知：有 [DONE] 且已有产出按正常收尾，否则判 error 交给重试层。 */
+function mapChatStopReason(
+  reason: string | undefined,
+  sawStreamEnd: boolean,
+  sawOutput: boolean,
+  hasToolCalls: boolean,
+): 'end_turn' | 'tool_use' | 'max_tokens' | 'refusal' | 'error' {
+  if (reason === 'tool_calls' || reason === 'function_call') return 'tool_use';
+  if (reason === 'length') return 'max_tokens';
+  if (reason === 'content_filter') return 'refusal';
+  if (reason === 'stop') return 'end_turn';
+  if (sawStreamEnd && sawOutput) return hasToolCalls ? 'tool_use' : 'end_turn';
+  return 'error';
 }
 
 function flushTools(effective: AdapterContext['effective'], emit: Emit, pending: Map<number, PendingTool>) {
@@ -256,9 +277,11 @@ export const openaiChatAdapter: Adapter = {
   async run(ctx: AdapterContext, emit: Emit): Promise<void> {
     const { effective, request, stream } = ctx;
     const apiKey = resolveApiKey(effective, ctx.env);
-    const headers = buildHeaders(effective, apiKey);
+    const headers = buildHeaders(effective, apiKey, request.headers);
     const url = joinUrl(effective.baseUrl, effective.path, '/chat/completions', effective.query);
-    const body = buildBody(ctx);
+    const body = request.rawBody
+      ? { ...request.rawBody, ...(stream ? { stream: true } : {}) }
+      : buildBody(ctx);
     const spec = {
       url,
       headers,
@@ -269,6 +292,7 @@ export const openaiChatAdapter: Adapter = {
       provider: effective.providerId,
       model: effective.id,
       errors: effective.errors,
+      ...(ctx.fetch ? { fetch: ctx.fetch } : {}),
       ...(ctx.signal ? { signal: ctx.signal } : {}),
     };
 
@@ -302,6 +326,8 @@ export const openaiChatAdapter: Adapter = {
     const pending = new Map<number, PendingTool>();
     const state: StreamState = {
       done: false,
+      sawStreamEnd: false,
+      sawOutput: false,
       text: '',
       thinking: '',
     };
@@ -310,11 +336,15 @@ export const openaiChatAdapter: Adapter = {
       parseChunk(effective, event.data, emit, pending, state);
     };
     await readSse(handle, { ...spec }, onEvent);
+    const hadToolCalls = pending.size > 0;
     flushTools(effective, emit, pending);
     if (state.thinking) emit({ type: 'thinking_end', text: state.thinking });
     if (state.text) emit({ type: 'text_end', text: state.text });
     const usage = state.usage ?? EMPTY_USAGE;
     emit({ type: 'usage', ...usage });
-    emit({ type: 'done', stopReason: mapStopReason(state.finishReason) });
+    emit({
+      type: 'done',
+      stopReason: mapChatStopReason(state.finishReason, state.sawStreamEnd, state.sawOutput, hadToolCalls),
+    });
   },
 };

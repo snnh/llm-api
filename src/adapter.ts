@@ -6,6 +6,7 @@ export interface AdapterContext {
   request: ChatRequest;
   stream: boolean;
   env?: Record<string, string | undefined> | undefined;
+  fetch?: typeof fetch | undefined;
   signal?: AbortSignal | undefined;
   onRawEvent?: ((raw: string) => void) | undefined;
 }

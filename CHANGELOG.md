@@ -1,5 +1,15 @@
 # Changelog
 
+## 未发布
+
+### 传输与事件
+
+- 新增请求级 `headers`、`rawBody` 与 Responses `serverWebSearch`；宿主可复用既有协议构造器，仅把认证、超时、SSE 解析和错误分类交给本库。
+- Responses 事件补齐完整 `reasoning` item、`text_end.itemId/phase`、`server_tool` 与 `web_search_call`，支持 OWC 的原样回放与服务端搜索。
+- SSE 单事件上限 8 MiB；idle 超时只由 data 事件重置（心跳注释不再续命），`0` 表示关闭。
+- `createLLM` 支持注入 `fetch`；chat 截断（无 finish_reason/`[DONE]`）与 Responses/Anthropic 截断统一以 `done.stopReason="error"` 收尾。
+
+
 ## 0.1.0 — 2026-11-21
 
 首个可运行版本。

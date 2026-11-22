@@ -161,8 +161,22 @@ Anthropic 的多个 `thinking` / `redacted_thinking` 块会按顺序保存在 `T
 | `role: 'system'` 的 `toolChanges` / `outputConfig` | `anthropic-messages` | 末尾更新工具可用性与逐消息 effort |
 | `deferredTools` | chat-completions / anthropic-messages | 配合 `capabilities.deferLoading` 发 `defer_loading` |
 | `async: true` 工具 | `openai-responses` | 异步工具声明与回放 |
+| `serverWebSearch` | `openai-responses` | 在 `tools` 末尾附加内置 `{"type":"web_search"}` |
+| `headers` | 全部 | 请求级额外 header（如动态 User-Agent） |
+| `rawBody` | 全部 | 调用方预构造的协议 body；认证/重试/超时/事件解析仍由库处理 |
 
 wire 不支持的结构会抛 `UNSUPPORTED_FEATURE`，`force: true` 不绕过这些结构性校验。
+
+## 事件与增量边界
+
+`chatStream()` 统一事件：`text_delta` / `text_end` / `thinking_delta` / `thinking_end` /
+`tool_call_delta` / `tool_call` / `server_tool` / `web_search_call` / `usage` / `done`。
+
+- `thinking_end.item`：Responses 返回的完整 reasoning item，适合原样回放；`signature` 保留 item id。
+- `text_end.itemId` / `phase`：Responses message item 的权威 id/phase，调用方可自行编码成签名落盘。
+- `server_tool` 是实时活动；`web_search_call` 携带完整 item，按「Pass back as-is」回放。
+- `rawBody` 适合宿主已有协议构造器时只接管传输层；库仍负责 SSE 分帧、idle 超时、事件上限、
+  HTTP 错误分类与取消。
 
 ## 不瞎传
 

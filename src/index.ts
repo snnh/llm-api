@@ -421,6 +421,7 @@ export function createLLM(input: LLMConfig | unknown, opts: CreateOptions = {}):
       provider: effective.providerId,
       model: effective.id,
       errors: effective.errors,
+      ...(opts.fetch ? { fetch: opts.fetch } : {}),
       ...(signal ? { signal } : {}),
     };
     const { json } = await requestJson(spec);
@@ -478,6 +479,7 @@ export function createLLM(input: LLMConfig | unknown, opts: CreateOptions = {}):
               request,
               stream,
               env: opts.env,
+              ...(opts.fetch ? { fetch: opts.fetch } : {}),
               ...(signal ? { signal } : {}),
               ...(streamOpts.onRawEvent ? { onRawEvent: streamOpts.onRawEvent } : {}),
             },
@@ -594,6 +596,7 @@ export function createLLM(input: LLMConfig | unknown, opts: CreateOptions = {}):
         provider: providerId,
         model: effective.id,
         errors: effective.errors,
+        ...(opts.fetch ? { fetch: opts.fetch } : {}),
       };
       const { json, text } = await requestJson(spec);
       void text;
