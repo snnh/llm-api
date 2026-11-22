@@ -211,7 +211,7 @@ export async function readSse(
       // Only data events reset the watchdog: proxy heartbeat comments must not
       // keep a half-open stream alive.
       handle.touch();
-      if (event.data.length > maxEventBytes) {
+      if (Buffer.byteLength(event.data, 'utf8') > maxEventBytes) {
         throw new LLMError('TRANSPORT', `SSE 事件超过 ${maxEventBytes} 字节上限`, {
           ...(spec.provider ? { provider: spec.provider } : {}),
           ...(spec.model ? { model: spec.model } : {}),
