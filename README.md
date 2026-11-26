@@ -4,6 +4,7 @@
 
 - 三层配置：`providers`（端点/协议/凭据）→ `families`（模型家族回退）→ `models`（单模型差异）
 - 加一个模型：改配置；加一个同协议厂商：加一条 provider
+- 四类 wire：Chat Completions、Anthropic Messages、OpenAI Responses、Gemini `generateContent`
 - 统一 `chat()` / `chatStream()`；流式工具调用、thinking、usage 归一
 - 配置接口：`schema` / `describe` / `validate` / `apply` / `save` / `onConfigChange` / `discover`
 - 参数克制：未提供、未声明、非必需的字段一律不发
@@ -78,7 +79,7 @@ models:
     force: true          # 只放开这一条
 ```
 
-强制模式不绕过配置 schema、wire 结构校验（`cacheBreakpoints` 只能 Anthropic、异步工具只能 Responses）和缓存/思考形态等配置期诊断；`thinking` 的字段映射仍由 `thinkingStyle` 决定。
+强制模式不绕过配置 schema、wire 结构校验（`cacheBreakpoints` 只能 Anthropic、异步工具只能 Responses、Gemini 不支持延迟工具/显式缓存）和缓存/思考形态等配置期诊断；`thinking` 的字段映射仍由 `thinkingStyle` 决定。
 
 Responses 线改思考深度用 `configurationUpdates`，不必改请求级 `reasoning.effort`：
 
@@ -150,6 +151,59 @@ await llm.chat({
 
 Anthropic 的多个 `thinking` / `redacted_thinking` 块会按顺序保存在 `Thinking.blocks` 中，并可原样回放；空 `thinking` + `signature` 也会保留。仍未建模的是 reasoning 块与文本/tool 调用之间的原始交错位置——`Message.reasoning` 仍是一个聚合对象。
 
+### Google Gemini 原生协议
+
+`interfaceType: gemini-generate-content` 走原生 `generateContent` / `streamGenerateContent`，不是 OpenAI 兼容层：
+
+```yaml
+providers:
+  - id: google
+    interfaceType: gemini-generate-content
+    baseUrl: https://generativelanguage.googleapis.com/v1beta
+    apiKeyEnv: GEMINI_API_KEY
+```
+
+```ts
+await llm.chat({
+  model: 'gemini-4-argon-native',
+  system: '你是一个简洁的助手。',
+  messages: [{ role: 'user', content: '你好' }],
+  thinking: 'enabled',
+  thinkingBudgetTokens: 2048,
+});
+```
+
+映射规则：
+
+- `messages` → `contents`（`assistant` → `model`）；图片/视频 → `inlineData`；连续同角色内容合并。
+- 顶层 `system`、所有 `role: 'system'` 消息和 `systemSuffix` → `systemInstruction.parts`；原生协议没有会话中 system 角色，`toolChanges` / `outputConfig` 仍结构性拒绝。`compat.systemPrompt: message` 则折进第一条 user 内容。
+- `tools` → `tools[0].functionDeclarations`；缺少 `description` 时补空字符串（官方 proto 标记为 required）。`tool` 消息 → `functionResponse`，工具结果必须是文本或可解析为 JSON 对象。本库未映射 Gemini 的延迟加载/异步工具，`deferredTools` 与 `async: true` 会拒绝。
+- `maxTokens` → `maxOutputTokens`；`topP` / `topK` / `stop` / `seed` / `jsonMode` → `generationConfig.topP` / `topK` / `stopSequences` / `seed` / `responseMimeType: "application/json"`。
+- `thinkingStyle` 决定思考字段：`thinking` / `extended` / `fixed` 映射 `thinkingConfig.thinkingBudget`（调用方给 `thinkingBudgetTokens`，库不臆造），`effort_only` / `adaptive` 把 `effort` 原样映射 `thinkingLevel`；`enable_thinking` 在 Gemini 上配置期报错，`effort_only` + `thinking: disabled` 会拒绝。额外的 `generationConfig` 字段可用 `extraBody.generationConfig` 或 `extra.generationConfig` 合并。
+- 原生端点自动缓存；`caching: explicit` 与 `cacheBreakpoints` 不适用。
+
+**Thought signatures**：Gemini 3+ 的多轮工具调用需要回放 `thoughtSignature`。库把 function call 上的签名放到 `ToolCall.signature`（流式事件 `tool_call.signature`），把 text part 上的签名放到 `ContentPart.signature`（流式事件 `text_end.signature`；聚合结果 `ChatResult.textSignature`）；provider 返回的 `functionCall.id` 保留在 `ToolCall.providerId`，回放时同时写入 `functionCall.id` 与 `functionResponse.id`。原样放回 assistant 消息即可：
+
+```ts
+const result = await llm.chat({ model: 'gemini-4-argon-native', messages: [...] });
+const call = result.toolCalls[0];
+if (!call) throw new Error('没有工具调用');
+await llm.chat({
+  model: 'gemini-4-argon-native',
+  messages: [
+    { role: 'user', content: '查一下天气' },
+    {
+      role: 'assistant',
+      content: result.text ? [{ type: 'text', text: result.text, ...(result.textSignature ? { signature: result.textSignature } : {}) }] : [],
+      toolCalls: result.toolCalls,       // 含 signature 与 providerId
+    },
+    { role: 'tool', toolCallId: call.id, name: call.name, content: '{"ok":true}' },
+  ],
+});
+```
+
+原生响应中的非文本 part（例如图片输出）暂不进入统一事件模型；`candidateCount > 1` 时只取第一个 candidate；assistant 文本与 tool call 会按「先 text、后 functionCall」重组，不保留原始 part 交错。Gemini 的 built-in tools（`googleSearch` / `codeExecution` 等）与 `streamFunctionCallArguments`（`partialArgs`）尚未映射，`extra.tools` 不会注入，`serverWebSearch` 与 `streamFunctionCallArguments` 对应的 `toolConfig` 会结构性拒绝；`rawBody` 仍可用于完全接管请求体。
+
 ## 请求字段与 wire 归属
 
 | 字段 | 适用 wire | 说明 |
@@ -162,9 +216,10 @@ Anthropic 的多个 `thinking` / `redacted_thinking` 块会按顺序保存在 `T
 | `role: 'system'` 的 `toolChanges` / `outputConfig` | `anthropic-messages` | 末尾更新工具可用性与逐消息 effort |
 | `deferredTools` | chat-completions / anthropic-messages | 配合 `capabilities.deferLoading` 发 `defer_loading` |
 | `async: true` 工具 | `openai-responses` | 异步工具声明与回放 |
-| `serverWebSearch` | `openai-responses` | 在 `tools` 末尾附加内置 `{"type":"web_search"}` |
+| `serverWebSearch` | `openai-responses` | 在 `tools` 末尾附加内置 `{"type":"web_search"}`；Gemini 原生线结构性拒绝 |
 | `headers` | 全部 | 请求级额外 header（如动态 User-Agent） |
 | `rawBody` | 全部 | 调用方预构造的协议 body；认证/重试/超时/事件解析仍由库处理 |
+| text / tool `signature` | `gemini-generate-content` | 回放 `thoughtSignature`（Gemini 3+ 多轮工具调用需要） |
 
 wire 不支持的结构会抛 `UNSUPPORTED_FEATURE`，`force: true` 不绕过这些结构性校验。
 
@@ -173,8 +228,9 @@ wire 不支持的结构会抛 `UNSUPPORTED_FEATURE`，`force: true` 不绕过这
 `chatStream()` 统一事件：`text_delta` / `text_end` / `thinking_delta` / `thinking_end` /
 `tool_call_delta` / `tool_call` / `server_tool` / `web_search_call` / `usage` / `done`。
 
-- `thinking_end.item`：Responses 返回的完整 reasoning item，适合原样回放；`signature` 保留 item id。
+- `thinking_end.item`：Responses 返回的完整 reasoning item，适合原样回放；`signature` 保留 item id / Gemini thought signature。
 - `text_end.itemId` / `phase`：Responses message item 的权威 id/phase，调用方可自行编码成签名落盘。
+- `text_end.signature` / `tool_call.signature`：Gemini `thoughtSignature`，原样回放才能通过多轮工具签名校验；`tool_call.providerId` 是 provider 的 `functionCall.id`，应与 `functionResponse.id` 配对。
 - `server_tool` 是实时活动；`web_search_call` 携带完整 item，按「Pass back as-is」回放。
 - `rawBody` 适合宿主已有协议构造器时只接管传输层；库仍负责 SSE 分帧、idle 超时、事件上限、
   HTTP 错误分类与取消。
@@ -216,7 +272,7 @@ pnpm web        # http://127.0.0.1:8788
 ```sh
 export DEEPSEEK_API_KEY=...
 pnpm example    # 流式打印，展示生效模型视图
-pnpm test       # 67 个契约测试（node:test + 本地 mock 上游）
+pnpm test       # 75 个契约测试（node:test + 本地 mock 上游）
 node --test tests/dialects.test.mjs   # 国内模型方言矩阵：只改配置
 ```
 
@@ -235,7 +291,7 @@ node --test tests/dialects.test.mjs   # 国内模型方言矩阵：只改配置
 
 ## 内置主流配置（2026-11-21 核对）
 
-`presets/mainstream-2026-11.config.yaml`：18 个端点、35 个家族、24 个旗舰模型条目，开箱即用。
+`presets/mainstream-2026-11.config.yaml`：19 个端点、35 个家族、26 个旗舰模型条目，开箱即用。
 
 ```ts
 const config = loadConfig('presets/mainstream-2026-11.config.yaml');
@@ -256,7 +312,7 @@ await llm.chat({ model: 'claude-opus-5-5', messages: [...] });
 | 腾讯 / 豆包 / 阶跃 | hy3 / hy4、doubao-*、step-* | 256K / 64K | family 前缀匹配，具体 ID 用 `discover()` 取 |
 | OpenAI | gpt-6.2-astra / 6.2-sol、6-astra / 6.1-sol / 6-luna | 1.05M / 128K | Responses；`reasoning.effort`（6.2 不收 `none` / `minimal`，且建议移除 `temperature` / `top_p` / `top_logprobs`）+ `prompt_cache_options` + 加密推理回放 + 异步工具 |
 | Anthropic | opus / sonnet / haiku 5.5、fable 5.2 | 1M / 128K | adaptive 思考 + `output_config.effort`，显式缓存断点 |
-| Google | gemini-4-argon / gemini-3.8-flash | 1M / 64K | OpenAI 兼容端点；思考级别用 `extra: { thinking_level }` |
+| Google | gemini-4-argon / gemini-3.8-flash（OpenAI 兼容）；`*-native`（原生） | 1M / 64K | 兼容层用 `extra: { thinking_level }`；原生线 `effort` → `thinkingLevel`，签名可回放 |
 | xAI | grok-4.7 | 500K / 64K | `reasoning_effort` |
 | Mistral | mistral-large-4 | 1M / 64K | `max_completion_tokens` |
 | 聚合 / 本地 | OpenRouter、Ollama | 按家族 | OpenRouter 需显式 `provider: 'openrouter'` |
@@ -279,6 +335,7 @@ await llm.chat({ model: 'claude-opus-5-5', messages: [...] });
 | `openai-chat-completions` | ✅ 流式/非流式、tools、usage、thinking、includeUsage |
 | `anthropic-messages` | ✅ 流式/非流式、tools、thinking 签名与多块 `redacted_thinking` 回放、末尾 system/tool/effort 更新、explicit/auto 缓存、deferLoading |
 | `openai-responses` | ✅ 非流式 + SSE、function_call、异步工具（`async: true`）、`configurationUpdates`、`promptCacheOptions` / `promptCacheKey` / 显式断点、加密/纯文本推理回放 |
+| `gemini-generate-content` | ✅ 原生流式/非流式、`contents/parts`、`systemInstruction`、function calling、thinkingConfig、usage、thought signature 回放、`discover()` |
 | embeddings / rerank / images | ✅ 端点映射可配（`embed` / `rerank` / `image`） |
 | 模型发现 / 刷新 / 并发 | ✅ `discover()`、`refresh()`、`maxConcurrent` |
 

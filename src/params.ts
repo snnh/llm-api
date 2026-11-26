@@ -5,7 +5,7 @@ import type { ChatRequest } from './types.ts';
 export const CORE_BODY_KEYS = ['model', 'messages', 'stream', 'tools', 'system', 'input'];
 
 const NORMALIZED_KEYS = new Set([
-  'model', 'provider', 'system', 'messages', 'tools', 'deferredTools', 'thinking', 'effort',
+  'model', 'provider', 'system', 'systemSuffix', 'messages', 'tools', 'deferredTools', 'thinking', 'effort',
   'thinkingBudgetTokens', 'configurationUpdates', 'maxTokens', 'temperature', 'topP', 'topK', 'stop', 'seed', 'jsonMode',
   'cacheBreakpoints', 'promptCacheOptions', 'promptCacheKey', 'serverWebSearch', 'headers', 'rawBody', 'extra', 'signal',
 ]);

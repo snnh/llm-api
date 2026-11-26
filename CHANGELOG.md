@@ -2,6 +2,14 @@
 
 ## 未发布
 
+### 协议
+
+- 新增原生 `gemini-generate-content`：`generateContent` / `streamGenerateContent?alt=sse`、`contents/parts`、`systemInstruction`、function calling、`generationConfig`、thinkingConfig、usage 与 `discover()`。
+- Gemini thought signature 进入统一模型：文本 part 的 `ContentPart.signature` / `ChatResult.textSignature`、function call 的 `ToolCall.signature`；流式对应 `text_end.signature` / `tool_call.signature`，可原样回放多轮工具调用。provider 的 `functionCall.id` 保留为 `ToolCall.providerId`，并回放到 `functionResponse.id`。
+- Gemini 原生线拒绝 `deferLoading`、`enable_thinking`、`caching: explicit`、异步工具和会话中 system 工具/effort 更新；缺少工具描述时补空字符串，`effort_only` + `thinking: disabled` 拒绝，`streamFunctionCallArguments` / `partialArgs` 暂不支持并结构性拒绝。
+- `serverWebSearch` 在 Gemini 原生线上结构性拒绝（built-in tools 尚未映射）；其他 wire 保持原行为。
+- preset 保留 Google OpenAI 兼容端点，新增 `google-native` 与两个 `*-native` 模型（19 端点 / 35 家族 / 26 模型）。
+
 ### 传输与事件
 
 - 新增请求级 `headers`、`rawBody` 与 Responses `serverWebSearch`；宿主可复用既有协议构造器，仅把认证、超时、SSE 解析和错误分类交给本库。

@@ -1,8 +1,9 @@
-/** Wire protocols. M1 implements the first two. */
+/** Wire protocols. */
 export type InterfaceType =
   | 'openai-chat-completions'
   | 'anthropic-messages'
-  | 'openai-responses';
+  | 'openai-responses'
+  | 'gemini-generate-content';
 
 export type CachingMode = 'explicit' | 'auto' | 'none';
 export type Modality = 'text' | 'image' | 'video';
@@ -170,7 +171,13 @@ export interface PromptCacheBreakpoint {
 }
 
 export type ContentPart =
-  | { type: 'text'; text: string; promptCacheBreakpoint?: PromptCacheBreakpoint }
+  | {
+      type: 'text';
+      text: string;
+      promptCacheBreakpoint?: PromptCacheBreakpoint;
+      /** Provider-opaque signature (Gemini: `thoughtSignature` on a text part). */
+      signature?: string;
+    }
   | { type: 'image'; data: string; mediaType: string };
 
 export interface ToolCall {
@@ -180,6 +187,10 @@ export interface ToolCall {
   itemId?: string;
   /** Responses API: the call was issued asynchronously. */
   async?: boolean;
+  /** Provider-opaque signature (Gemini: `thoughtSignature` on a function call). */
+  signature?: string;
+  /** Provider-assigned call id (Gemini `functionCall.id`), replayed on the response. */
+  providerId?: string;
 }
 
 export type ThinkingBlock =
@@ -328,7 +339,18 @@ export type LLMEvent =
       item?: Record<string, unknown>;
     }
   | { type: 'tool_call_delta'; id: string; name?: string; argumentsDelta: string }
-  | { type: 'tool_call'; id: string; name: string; input: Record<string, unknown>; itemId?: string; async?: boolean }
+  | {
+      type: 'tool_call';
+      id: string;
+      name: string;
+      input: Record<string, unknown>;
+      itemId?: string;
+      async?: boolean;
+      /** Provider-opaque signature (Gemini `thoughtSignature`), replay on this call. */
+      signature?: string;
+      /** Provider-assigned call id (Gemini `functionCall.id`). */
+      providerId?: string;
+    }
   | { type: 'server_tool'; tool: string; phase: 'start' | 'update' | 'end' }
   | { type: 'web_search_call'; item: Record<string, unknown> }
   | ({ type: 'usage' } & Usage)
@@ -337,6 +359,8 @@ export type LLMEvent =
 
 export interface ChatResult {
   text: string;
+  /** Provider-opaque signature for the aggregated text (Gemini thought signature). */
+  textSignature?: string;
   thinking?: Thinking;
   toolCalls: ToolCall[];
   usage: Usage;

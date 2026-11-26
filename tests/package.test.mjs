@@ -26,6 +26,7 @@ test('published package ships dist, declarations and runnable examples', () => {
     'dist/index.d.ts',
     'dist/config.js',
     'dist/responses.js',
+    'dist/gemini.js',
     'examples/basic.mjs',
     'examples/web/server.mjs',
     'CHANGELOG.md',

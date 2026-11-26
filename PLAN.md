@@ -1,6 +1,6 @@
 # LLM API 组件 — 设计计划
 
-> 状态：核心计划完成（价格统计、WebSocket mid-turn steering 等会话控制面除外），67 个契约测试通过
+> 状态：核心计划完成（价格统计、WebSocket mid-turn steering 等会话控制面除外），75 个契约测试通过
 > 参考：`snnh/openwebcode`（服务商档案模型）、`snnh/dsh-llm-service-lite`（适配器信条与失败语义）
 
 ## 1. 目标与非目标
@@ -59,7 +59,7 @@
 | 30 | 未履行的开关 | 不保留：移除 `imageOutput` / `strictTools`（没有行为就不放进能力表） | 留着当占位（违背"声明即承诺"） |
 | 31 | 家族匹配 | **最长匹配优先**；只有同等具体度才算歧义 | 一有多个匹配就报错（`glm-5.3` 会被 `glm-5` 拖成歧义） |
 | 32 | deferLoading | chat-completions 与 anthropic-messages 都支持（DeepSeek 也认 `defer_loading`）；responses 拒绝 | 只限 Anthropic（会漏掉 DeepSeek/Kimi） |
-| 33 | 内置主流配置 | 提供 `presets/mainstream-2026-11.config.yaml`（18 端点 / 35 家族 / 24 模型），上下文按官方值、不确定的取保守值 | 不做价格表（决策 29） |
+| 33 | 内置主流配置 | 提供 `presets/mainstream-2026-11.config.yaml`（19 端点 / 35 家族 / 26 模型），上下文按官方值、不确定的取保守值 | 不做价格表（决策 29） |
 | 34 | 模型拒绝的参数 | 新增 `capabilities.unsupportedParams`：仅作建议元数据，列出模型可能拒绝的字段，供 UI/调用方参考；库不据此拦截请求 | 每家电硬编码参数黑名单（必然过时） |
 | 35 | GPT-6.2 | 新增 `gpt-6.2-astra` / `gpt-6.2-sol` 家族：1.05M / 128K、`thinking` 恒开、`effort` 只列 `low`–`max`、工具只走 Responses | 挂到 `gpt-6` 家族（会继承旧的宽松声明） |
 | 36 | 异步工具 | Responses 函数工具支持 `async: true`，输出 `tool_call.async` 可回放；其他 wire 声明即报错。WebSocket mid-turn steering 不做（属于流式控制面） | 全做（库变成 agent runtime） |
@@ -71,6 +71,7 @@
 | 42 | Responses prompt cache | 新增 `promptCacheOptions`（`mode`/`ttl`/`prewarm`）、`promptCacheKey` 与文本块 `promptCacheBreakpoint`；`ttl` 只接受 `30m`/`12h`；其他 wire 结构性拒绝 | 让调用方自己拼 `extra`（类型不可见，容易把 camelCase 字段发到线上） |
 | 43 | Anthropic redacted thinking | 解析并回放 `redacted_thinking.data`；空 `thinking` + `signature` 也回放 | 过滤非 `thinking` 块（会静默破坏多轮工具协议） |
 | 44 | 多 reasoning 块 | `Thinking.blocks` 按顺序保留全部 thinking / redacted_thinking 块并原样回放 | 只保留最后一块（会破坏多轮工具协议） |
+| 45 | Gemini 原生协议 | 新增 `gemini-generate-content`：`contents/parts`、`systemInstruction`、`functionDeclarations`、`generationConfig`；`thinkingStyle` 决定 `thinkingConfig`；保留 `thoughtSignature`（text / tool call）供多轮回放；延迟工具、显式缓存、会话中 system 更新结构性拒绝。preset 保留 Google OpenAI 兼容端点，新增 `google-native` 与 `*-native` 模型 | 只走 Gemini 的 OpenAI 兼容端点（拿不到原生 thinking/签名语义） |
 
 ## 3. 概念模型
 
@@ -124,9 +125,9 @@ loadConfig(path: string, opts?): LLMConfig    // .json / .yaml / .yml
 | `id` | 必填 | 路由名，`[A-Za-z0-9._-]{1,64}`，全局唯一 |
 | `enabled` | `true` | 停用后不注册，但仍可被列出与修复 |
 | `force` | `false` | 跳过该端点的运行时能力校验，见 4.5 |
-| `interfaceType` | 必填 | `openai-chat-completions` / `anthropic-messages` / `openai-responses`（M1 前两个） |
+| `interfaceType` | 必填 | `openai-chat-completions` / `anthropic-messages` / `openai-responses` / `gemini-generate-content` |
 | `baseUrl` | 接口默认 | 如 `https://api.deepseek.com/v1`；也承载网关前缀 |
-| `path` | 接口默认 | 覆盖默认路径（`/chat/completions`、`/messages`） |
+| `path` | 接口默认 | 覆盖默认路径（`/chat/completions`、`/messages`）；Gemini 支持 `{model}` / `{method}` 占位 |
 | `query` | 无 | 静态查询参数 |
 | `headers` | 无 | 静态请求头 |
 | `auth` | 按接口推断 | `{ header, scheme, env }`，如 `{ header: x-api-key, scheme: '', env: ANTHROPIC_API_KEY }` |
@@ -145,7 +146,7 @@ loadConfig(path: string, opts?): LLMConfig    // .json / .yaml / .yml
 | `discover` | 按接口内置 | `{ path, readPath }`，见 5.4 |
 | `errors` | 按接口内置 | `{ "429": "QUOTA" }` 这类状态到错误码覆盖 |
 
-认证默认：`openai-chat-completions` → `authorization: Bearer <key>`；`anthropic-messages` → `x-api-key: <key>` + `anthropic-version`。
+认证默认：`openai-chat-completions` → `authorization: Bearer <key>`；`anthropic-messages` → `x-api-key: <key>` + `anthropic-version`；`gemini-generate-content` → `x-goog-api-key: <key>`。
 
 ### 4.3 `families[]`
 
@@ -196,7 +197,7 @@ loadConfig(path: string, opts?): LLMConfig    // .json / .yaml / .yml
 
 `force` 可按 `model > family > provider > root` 取最具体值；为 `true` 时运行时跳过图片/thinking/tools/deferLoading 的能力声明拒绝，但配置 schema、wire 结构与配置期诊断照常。
 
-请求级校验同样按声明执行：内容里带图片但 `modalities` 未声明 `image` → `UNSUPPORTED_FEATURE`；`thinking` 不在声明列表 → `INVALID_REQUEST`；`cacheBreakpoints` 只允许 anthropic + `caching: explicit`；`ToolDef.async` 只允许 Responses；`role:'system'` 的 `toolChanges`/`outputConfig` 只允许 anthropic-messages；`promptCacheOptions` / `promptCacheBreakpoint` 只允许 Responses。`force: true` 时跳过能力声明校验（图片/thinking/tools/deferLoading），wire 结构校验保留。`unsupportedParams` 是例外：始终只给建议，不拦截，参数与上游错误都原样透传。
+请求级校验同样按声明执行：内容里带图片但 `modalities` 未声明 `image` → `UNSUPPORTED_FEATURE`；`thinking` 不在声明列表 → `INVALID_REQUEST`；`cacheBreakpoints` 只允许 anthropic + `caching: explicit`；`ToolDef.async` 只允许 Responses；Gemini 不支持 `deferredTools` / 异步工具 / `caching: explicit`；`role:'system'` 的 `toolChanges`/`outputConfig` 只允许 anthropic-messages；`promptCacheOptions` / `promptCacheBreakpoint` 只允许 Responses。`force: true` 时跳过能力声明校验（图片/thinking/tools/deferLoading），wire 结构校验保留。`unsupportedParams` 是例外：始终只给建议，不拦截，参数与上游错误都原样透传。
 
 ### 4.6 缓存
 
@@ -376,7 +377,7 @@ discover(providerId: string): Promise<ModelCandidate[]>;
 // ModelCandidate = { id: string; contextWindow?: number; capabilities?: Partial<Capabilities> }
 ```
 
-- 内置规则：chat-completions → `GET {baseUrl}{discover.path ?? '/models'}` 读 `data[*].id`；anthropic-messages → `GET {baseUrl}/models` 读 `data[*].id`（带 `x-api-key` 与 `anthropic-version`）。
+- 内置规则：chat-completions → `GET {baseUrl}{discover.path ?? '/models'}` 读 `data[*].id`；anthropic-messages → `GET {baseUrl}/models` 读 `data[*].id`（带 `x-api-key` 与 `anthropic-version`）；gemini-generate-content → `GET {baseUrl}/models` 读 `models[*]`，兼容 `name` / `inputTokenLimit` / `outputTokenLimit`。
 - `discover` 只读、不落盘，候选由网页决定是否写入配置。
 - 端点不可达 / 非 JSON / 超过 4 MiB → `TRANSPORT` / `INVALID_REQUEST`。
 
@@ -452,6 +453,14 @@ type ErrorCode =
 
 `input` 扁平 item 列表、`function_call`/`function_call_output`、`reasoning` item 回放、`max_output_tokens` 必发。`promptCacheOptions` 映射为 `prompt_cache_options`，`promptCacheKey` 映射为 `prompt_cache_key`，文本块的 `promptCacheBreakpoint` 映射为 `prompt_cache_breakpoint`；`prewarm` 的空输出不判 `EMPTY_RESPONSE`。
 
+### 9.4 `gemini-generate-content`（M4）
+
+- `POST {baseUrl}{path|/models/{model}:{method}}`，`x-goog-api-key`；非流式 `:generateContent`，流式 `:streamGenerateContent?alt=sse`。
+- body：`contents`（`user`/`model` parts、`inlineData`、`functionCall`、`functionResponse`）、`systemInstruction`、`tools[0].functionDeclarations`、`generationConfig`（`maxOutputTokens`、采样、`stopSequences`、`seed`、`responseMimeType`、`thinkingConfig`）。
+- 流：SSE 每帧一个 `GenerateContentResponse`；text / `thought` part 分别映射 `text_delta` / `thinking_delta`，`functionCall` 直接映射完整 `tool_call`；`finishReason` 与 `usageMetadata` 归一。
+- `thoughtSignature` 保留在 text part / function call part 上，分别对应 `ContentPart.signature` / `ToolCall.signature` 与流式 `text_end.signature` / `tool_call.signature`；provider `functionCall.id` 保留为 `ToolCall.providerId` 并回放到 `functionResponse.id`。
+- `deferLoading`、异步工具、`caching: explicit`、会话中 system 工具/effort 更新、`streamFunctionCallArguments` / built-in tools 结构性拒绝；原生非文本输出 part 暂不进统一事件模型。
+
 ## 10. 目录结构
 
 ```
@@ -467,12 +476,14 @@ src/
   openai-chat.ts    # openai-chat-completions wire
   anthropic.ts      # anthropic-messages wire（thinking/redacted/末尾 system）
   responses.ts      # openai-responses wire（configurationUpdates/prompt cache/加密推理）
+  gemini.ts         # gemini-generate-content wire（contents/parts、thinkingConfig、thought signatures）
 tests/
   acceptance.test.mjs        # 别名、混协议、在途快照、abort、idle timeout
   config.test.mjs            # 三层解析、补丁、诊断、脱敏
   config-store.test.mjs      # apply/save/validate/discover
   openai.test.mjs            # chat-completions、流式工具、重试、reasoning
   anthropic.test.mjs         # messages、缓存、thinking、redacted、末尾 system
+  gemini.test.mjs            # 原生 generateContent、流式、签名回放、发现
   m2.test.mjs                # responses、configurationUpdates、prompt cache、embed/rerank
   m3.test.mjs                # 加密推理回放、image、并发诊断
   dialects.test.mjs          # 国内模型方言矩阵（仅配置）
@@ -520,7 +531,7 @@ presets/
 14. 网页 `describe()` 看不到明文密钥；`save()` 写回后文件里的密钥未被改写；
 15. 网页对话页能流式显示 text 与 tool-call，且 `onConfigChange` 后模型下拉自动更新。
 
-**验收结果**：1–12 由 `tests/*.test.mjs` 覆盖（67 项全绿）；13–15 由网页 API 集成（state/apply/save/chat SSE）与脚本语法检查验证，未做真实浏览器人工点检。
+**验收结果**：1–12 由 `tests/*.test.mjs` 覆盖（75 项全绿）；13–15 由网页 API 集成（state/apply/save/chat SSE）与脚本语法检查验证，未做真实浏览器人工点检。
 
 **M2（已实现 ✅）**：`openai-responses`（非流式 + SSE）、`embed` / `rerank`（端点映射可配）、`refresh()`（发现候选进内存缓存）、`maxConcurrent`（按 provider 排队）、strict 模式。
 **M3（已实现 ✅，价格除外）**：`image()`、Responses 加密推理回放（`encrypted_content` + item id 原样回传）、`concurrency()` 队列诊断。**价格统计按要求不做**。
@@ -595,7 +606,7 @@ presets/
 
 ## 15. 风险与未决
 
-1. **接口枚举的边界**：新厂商若讲第三种结构（如 Gemini `contents/parts`、Ollama NDJSON），仍需新增一个接口实现（约 150–200 行）。这是"不写死"的物理下限，已用 `fieldMap` / 静态注入点把常见方言差异挡在配置层。
+1. **接口枚举的边界**：新厂商若讲新结构（Gemini `contents/parts` 已实现；Ollama NDJSON 尚未），仍需新增一个接口实现（约 150–250 行）。这是"不写死"的物理下限，已用 `fieldMap` / 静态注入点把常见方言差异挡在配置层。
 2. **参数透传与归一同名冲突**：规则是归一优先、其余合并、冲突告警；若实际使用中冲突频繁，M2 可加 `paramMap`。
 3. **reasoning 回放**：Anthropic 的 `signature`、`redacted_thinking` 与多块顺序已通过 `Thinking.blocks` 保留；仍未建模 reasoning 块与文本/tool 调用之间的原始交错位置。
 4. **包名已定**：`@snnh/llm-api`，ESM-only，MIT；尚未发 npm。
@@ -610,8 +621,10 @@ presets/
 - [GPT-6.2 Astra 模型页](https://developers.openai.com/api/docs/models/gpt-6.2-astra)：1.05M 上下文、922K 最大输入、128K 最大输出、拒绝 `none`。
 - [OpenAI prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching)：`prompt_cache_options.mode` / `ttl` / `prewarm`、`prompt_cache_breakpoint`。
 - [Anthropic Thinking](https://platform.claude.com/docs/en/build-with-claude/thinking)：`signature`、`display: "omitted"`、`redacted_thinking`。
+- [Gemini generateContent](https://ai.google.dev/api/generate-content)：`contents/parts`、`systemInstruction`、`functionDeclarations`、`generationConfig`。
+- [Gemini thought signatures](https://ai.google.dev/gemini-api/docs/thought-signatures)：`thoughtSignature` 必须原样回放（Gemini 3 工具调用会校验）。
 
-## 17. 实现记录（M1–M3 落地差异）
+## 17. 实现记录（M1–M4 落地差异）
 
 1. **构建形态**：库以 `tsc` 产物 `dist/` 发布，`pnpm build` 是运行测试与示例的前置；发布产物本来就需要构建，测试与示例统一跑 `dist` 以避免源码/产物行为分叉。
 2. **`chat()` 不内驱 `chatStream()`**：两者共用事件管道，但 `chat()` 发非流式请求（不带 `stream`），`chatStream()` 才置 `stream: true`——避免"调用方没要流式却收到流式请求"。
@@ -635,3 +648,4 @@ presets/
 20. **末尾 system 更新**：Anthropic 适配器把 `role:'system'` 的 `toolChanges` 映射为 `tool_addition`/`tool_removal`（引用已声明工具），把 `outputConfig.effort` 映射为逐消息 `output_config`，并按需合并 `mid-conversation-tool-changes-2026-07-01` / `mid-conversation-output-config-2026-07-01` beta 头。
 21. **redacted thinking**：Anthropic 的 `redacted_thinking` 块映射为 `thinking.redacted` 与 `thinking.blocks`；回放时按 `blocks` 原样发回。`display: "omitted"` 产生的空 `thinking` + `signature` 也会回放。
 22. **prompt cache**：Responses `promptCacheOptions` 映射为 `prompt_cache_options`，`promptCacheKey` 映射为 `prompt_cache_key`，文本块的 `promptCacheBreakpoint` 映射为 `prompt_cache_breakpoint`；其他 wire 与不支持的值结构性拒绝。
+23. **Gemini 原生线**：`contents/parts`、`systemInstruction`、`functionDeclarations`、`generationConfig` 由适配器映射；`thoughtSignature` 通过 `ContentPart.signature` / `ToolCall.signature` / `textSignature` 保留并回放，`functionCall.id` 通过 `ToolCall.providerId` 回放到 `functionResponse.id`。`system` / `systemSuffix` 与所有 system 消息折进 `systemInstruction`，原生线没有会话中 system 语义；延迟/异步工具、显式缓存、`enable_thinking`、`effort_only + disabled`、`streamFunctionCallArguments` / built-in tools 结构性拒绝。preset 同时保留 `google` OpenAI 兼容线与 `google-native` 原生线。

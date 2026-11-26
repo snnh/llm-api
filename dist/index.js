@@ -1,6 +1,7 @@
 import { LLMError } from "./errors.js";
 import { ConfigState, configJsonSchema, loadConfig, parseConfig, saveConfigFile, } from "./config.js";
 import { anthropicAdapter } from "./anthropic.js";
+import { geminiAdapter } from "./gemini.js";
 import { openaiChatAdapter } from "./openai-chat.js";
 import { responsesAdapter } from "./responses.js";
 import { selectArray, selectPath } from "./paths.js";
@@ -77,6 +78,7 @@ function applyEnv(env, reference) {
 function aggregate(events, opts = {}) {
     return (async () => {
         let text = '';
+        let textSignature;
         let thinking = '';
         let signature;
         let redacted;
@@ -89,6 +91,10 @@ function aggregate(events, opts = {}) {
             switch (event.type) {
                 case 'text_delta':
                     text += event.text;
+                    break;
+                case 'text_end':
+                    if (event.signature !== undefined)
+                        textSignature = event.signature;
                     break;
                 case 'thinking_delta':
                     thinking += event.text;
@@ -112,6 +118,8 @@ function aggregate(events, opts = {}) {
                         input: event.input,
                         ...(event.itemId ? { itemId: event.itemId } : {}),
                         ...(event.async ? { async: true } : {}),
+                        ...(event.signature ? { signature: event.signature } : {}),
+                        ...(event.providerId ? { providerId: event.providerId } : {}),
                     });
                     break;
                 case 'usage':
@@ -131,11 +139,20 @@ function aggregate(events, opts = {}) {
             .map((block) => block.text)
             .join('');
         const effectiveThinking = thinkingBlocks.length > 0 ? blockText : thinking;
-        if (!opts.allowEmpty && !text && !effectiveThinking && thinkingBlocks.length === 0 && !signature && !redacted && toolCalls.length === 0) {
+        if (!opts.allowEmpty &&
+            stopReason !== 'refusal' &&
+            !text &&
+            !textSignature &&
+            !effectiveThinking &&
+            thinkingBlocks.length === 0 &&
+            !signature &&
+            !redacted &&
+            toolCalls.length === 0) {
             throw new LLMError('EMPTY_RESPONSE', '模型返回了空响应');
         }
         return {
             text,
+            ...(textSignature ? { textSignature } : {}),
             ...(effectiveThinking || thinkingBlocks.length > 0 || signature || redacted || encrypted
                 ? {
                     thinking: {
@@ -160,6 +177,8 @@ function adapterFor(effective) {
         return openaiChatAdapter;
     if (effective.interfaceType === 'openai-responses')
         return responsesAdapter;
+    if (effective.interfaceType === 'gemini-generate-content')
+        return geminiAdapter;
     throw new LLMError('UNSUPPORTED_FEATURE', `尚未实现 ${effective.interfaceType}`, {
         provider: effective.providerId,
         model: effective.id,
@@ -232,6 +251,12 @@ export function createLLM(input, opts = {}) {
                 model: effective.id,
             });
         }
+        if (effective.interfaceType === 'gemini-generate-content' && (request.deferredTools?.length || request.tools?.some((tool) => tool.deferLoading))) {
+            throw new LLMError('UNSUPPORTED_FEATURE', 'Gemini generateContent 不支持延迟加载工具', {
+                provider: effective.providerId,
+                model: effective.id,
+            });
+        }
         const midSystem = request.messages.find((message) => message.role === 'system' && (message.toolChanges || message.outputConfig));
         if (midSystem && effective.interfaceType !== 'anthropic-messages') {
             throw new LLMError('UNSUPPORTED_FEATURE', '工具变更/逐消息 effort 只在 anthropic-messages 上可用', {
@@ -256,6 +281,12 @@ export function createLLM(input, opts = {}) {
         }
         if (request.configurationUpdates?.length && effective.interfaceType !== 'openai-responses') {
             throw new LLMError('UNSUPPORTED_FEATURE', 'configurationUpdates 只在 openai-responses 上可用', {
+                provider: effective.providerId,
+                model: effective.id,
+            });
+        }
+        if (request.serverWebSearch === true && effective.interfaceType === 'gemini-generate-content') {
+            throw new LLMError('UNSUPPORTED_FEATURE', 'Gemini 原生线暂未映射 serverWebSearch（built-in tools）', {
                 provider: effective.providerId,
                 model: effective.id,
             });
@@ -552,7 +583,9 @@ export function createLLM(input, opts = {}) {
             };
             const { json, text } = await requestJson(spec);
             void text;
-            return readCandidates(json, provider.discover?.readPath);
+            return readCandidates(json, provider.discover?.readPath, {
+                stripModelsPrefix: provider.interfaceType === 'gemini-generate-content',
+            });
         },
         async refresh(providerId) {
             const candidates = await llm.discover(providerId);
@@ -626,7 +659,7 @@ export function createLLM(input, opts = {}) {
     };
     return llm;
 }
-function readCandidates(json, readPath) {
+function readCandidates(json, readPath, options = {}) {
     const root = obj(json);
     if (!root)
         return [];
@@ -658,14 +691,17 @@ function readCandidates(json, readPath) {
         const entry = obj(item);
         if (!entry)
             continue;
-        const id = str(entry.id) ?? str(entry.model) ?? str(entry.name);
-        if (!id)
+        const rawId = str(entry.id) ?? str(entry.model) ?? str(entry.name);
+        if (!rawId)
             continue;
-        const contextWindow = num(entry.context_window) ?? num(entry.contextWindow) ?? num(entry.max_input_tokens) ?? num(entry.maxInputTokens);
-        const maxOutput = num(entry.max_tokens) ?? num(entry.maxOutput) ?? num(entry.output_token_limit);
+        const id = options.stripModelsPrefix ? rawId.replace(/^models\//, '') : rawId;
+        const contextWindow = num(entry.context_window) ?? num(entry.contextWindow) ?? num(entry.max_input_tokens) ?? num(entry.maxInputTokens) ??
+            num(entry.inputTokenLimit);
+        const maxOutput = num(entry.max_tokens) ?? num(entry.maxOutput) ?? num(entry.output_token_limit) ?? num(entry.outputTokenLimit);
+        const displayName = str(entry.display_name) ?? str(entry.displayName) ?? str(entry.name);
         out.push({
             id,
-            ...(str(entry.display_name) ?? str(entry.name) ? { name: str(entry.display_name) ?? str(entry.name) } : {}),
+            ...(displayName ? { name: displayName } : {}),
             ...(contextWindow !== undefined ? { contextWindow } : {}),
             ...(maxOutput !== undefined ? { maxOutput } : {}),
         });

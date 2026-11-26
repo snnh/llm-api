@@ -121,6 +121,12 @@ providers:
     apiKeyEnv: GEMINI_API_KEY
     includeUsage: true
 
+  - id: google-native
+    displayName: Google Gemini（原生 generateContent）
+    interfaceType: gemini-generate-content
+    baseUrl: https://generativelanguage.googleapis.com/v1beta
+    apiKeyEnv: GEMINI_API_KEY
+
   - id: xai
     displayName: xAI Grok
     interfaceType: openai-chat-completions
@@ -453,8 +459,8 @@ families:
     capabilities:
       tools: true
       modalities: [text, image, video]
-      # Gemini 4 用 thinking_level；OpenAI 兼容层未统一，建议经 extra 传，
-      # 例如 extra: { thinking_level: 'high' }。
+      # OpenAI 兼容层未统一 thinking_level；建议经 extra 传，
+      # 例如 extra: { thinking_level: 'high' }。原生线见 gemini-4-argon-native。
 
   - id: gemini-3.8
     match: ['gemini-3.8']
@@ -636,6 +642,18 @@ models:
     provider: google
     family: gemini-3.8
     upstream: gemini-3.8-flash
+
+  - id: gemini-4-argon-native
+    provider: google-native
+    family: gemini-4
+    upstream: gemini-4-argon
+    capabilities: { thinkingStyle: effort_only }
+
+  - id: gemini-3.8-flash-native
+    provider: google-native
+    family: gemini-3.8
+    upstream: gemini-3.8-flash
+    capabilities: { thinkingStyle: effort_only }
 
   - id: grok-4.7
     provider: xai

@@ -29,6 +29,8 @@ test('mainstream preset loads clean and resolves every flagship', () => {
     ['gpt-6.2-astra', 'openai', 1050000, 128000],
     ['gpt-6.2-sol', 'openai', 1050000, 128000],
     ['gemini-4-argon', 'google', 1048576, 65536],
+    ['gemini-4-argon-native', 'google-native', 1048576, 65536],
+    ['gemini-3.8-flash-native', 'google-native', 1000000, 65536],
     ['grok-4.7', 'xai', 500000, 65536],
     ['mistral-large-4', 'mistral', 1000000, 65536],
     ['ernie-5.0', 'baidu', 256000, 65536],
@@ -60,6 +62,9 @@ test('preset declares each vendor dialect exactly once', () => {
   assert.equal(llm.model('MiniMax-M3.1-Flash').capabilities.thinkingStyle, 'effort_only');
   assert.equal(llm.model('claude-opus-5-5').capabilities.thinkingStyle, 'adaptive');
   assert.equal(llm.model('gpt-6-astra').capabilities.responsesEncryptedReplay, true);
+  assert.equal(llm.model('gemini-4-argon').interfaceType, 'openai-chat-completions');
+  assert.equal(llm.model('gemini-4-argon-native').interfaceType, 'gemini-generate-content');
+  assert.equal(llm.model('gemini-4-argon-native').capabilities.thinkingStyle, 'effort_only');
   assert.equal(llm.model('gpt-6.2-astra').capabilities.thinkingStyle, 'effort_only');
   assert.deepEqual(llm.model('gpt-6.2-astra').capabilities.effort, ['low', 'medium', 'high', 'xhigh', 'max']);
   assert.deepEqual(llm.model('gpt-6.2-astra').capabilities.thinking, ['enabled']);
@@ -90,6 +95,13 @@ test('preset requests hit the right wire shapes', async (t) => {
         status: 'completed',
         output: [{ type: 'message', content: [{ type: 'output_text', text: 'ok' }] }],
         usage: { input_tokens: 1, output_tokens: 1 },
+      });
+      return;
+    }
+    if (req.url.includes(':generateContent')) {
+      sendJson(res, {
+        candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+        usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
       });
       return;
     }
@@ -217,6 +229,20 @@ test('preset requests hit the right wire shapes', async (t) => {
     output_config: { effort: 'low' },
   });
   assert.match(mock.captured.at(-1).headers['anthropic-beta'], /mid-conversation-tool-changes/);
+
+  // Gemini 4：原生 generateContent + systemInstruction + functionDeclarations
+  await ask('gemini-4-argon-native', {
+    system: 'be terse',
+    tools: [{ name: 'clock', parameters: { type: 'object' } }],
+    effort: 'high',
+  });
+  assert.ok(mock.captured.at(-1).path.endsWith('/models/gemini-4-argon:generateContent'));
+  assert.equal(mock.captured.at(-1).headers['x-goog-api-key'], 'test-key');
+  assert.deepEqual(lastBody().systemInstruction, { parts: [{ text: 'be terse' }] });
+  assert.equal(lastBody().contents[0].parts[0].text, 'x');
+  assert.equal(lastBody().tools[0].functionDeclarations[0].name, 'clock');
+  assert.equal(lastBody().tools[0].functionDeclarations[0].description, '');
+  assert.deepEqual(lastBody().generationConfig.thinkingConfig, { thinkingLevel: 'high' });
 
   // Mistral Large 4：max_completion_tokens
   await ask('mistral-large-4', { maxTokens: 1024 });

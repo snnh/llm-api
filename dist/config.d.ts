@@ -24,6 +24,7 @@ export declare const llmConfigSchema: z.ZodObject<{
             "openai-chat-completions": "openai-chat-completions";
             "anthropic-messages": "anthropic-messages";
             "openai-responses": "openai-responses";
+            "gemini-generate-content": "gemini-generate-content";
         }>;
         displayName: z.ZodOptional<z.ZodString>;
         baseUrl: z.ZodOptional<z.ZodString>;
@@ -90,6 +91,7 @@ export declare const llmConfigSchema: z.ZodObject<{
             "openai-chat-completions": "openai-chat-completions";
             "anthropic-messages": "anthropic-messages";
             "openai-responses": "openai-responses";
+            "gemini-generate-content": "gemini-generate-content";
         }>>;
         baseUrl: z.ZodOptional<z.ZodString>;
         contextWindow: z.ZodOptional<z.ZodNumber>;
@@ -158,6 +160,7 @@ export declare const llmConfigSchema: z.ZodObject<{
             "openai-chat-completions": "openai-chat-completions";
             "anthropic-messages": "anthropic-messages";
             "openai-responses": "openai-responses";
+            "gemini-generate-content": "gemini-generate-content";
         }>>;
         baseUrl: z.ZodOptional<z.ZodString>;
         contextWindow: z.ZodOptional<z.ZodNumber>;

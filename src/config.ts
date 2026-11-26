@@ -21,7 +21,12 @@ const require = createRequire(import.meta.url);
 
 /* ------------------------------------------------------------------ schema */
 
-const interfaceType = z.enum(['openai-chat-completions', 'anthropic-messages', 'openai-responses']);
+const interfaceType = z.enum([
+  'openai-chat-completions',
+  'anthropic-messages',
+  'openai-responses',
+  'gemini-generate-content',
+]);
 const caching = z.enum(['explicit', 'auto', 'none']);
 const thinkingStyle = z.enum(['thinking', 'enable_thinking', 'effort_only', 'fixed', 'extended', 'adaptive']);
 const stringMap = z.record(z.string(), z.unknown());
@@ -361,21 +366,30 @@ const DEFAULT_BASE_URL: Record<InterfaceType, string> = {
   'openai-chat-completions': 'https://api.openai.com/v1',
   'anthropic-messages': 'https://api.anthropic.com/v1',
   'openai-responses': 'https://api.openai.com/v1',
+  'gemini-generate-content': 'https://generativelanguage.googleapis.com/v1beta',
 };
 
 const DEFAULT_PATH: Record<InterfaceType, string> = {
   'openai-chat-completions': '/chat/completions',
   'anthropic-messages': '/messages',
   'openai-responses': '/responses',
+  // Gemini 的流式方法由适配器替换；这里的模板只描述非流式默认。
+  'gemini-generate-content': '/models/{model}:generateContent',
 };
 
 const DEFAULT_AUTH: Record<InterfaceType, { header: string; scheme: string }> = {
   'openai-chat-completions': { header: 'authorization', scheme: 'Bearer' },
   'anthropic-messages': { header: 'x-api-key', scheme: '' },
   'openai-responses': { header: 'authorization', scheme: 'Bearer' },
+  'gemini-generate-content': { header: 'x-goog-api-key', scheme: '' },
 };
 
-const SUPPORTED: InterfaceType[] = ['openai-chat-completions', 'anthropic-messages', 'openai-responses'];
+const SUPPORTED: InterfaceType[] = [
+  'openai-chat-completions',
+  'anthropic-messages',
+  'openai-responses',
+  'gemini-generate-content',
+];
 
 function mergeMaps<T extends object>(...sources: (T | undefined)[]): T {
   const out: Record<string, unknown> = {};
@@ -673,8 +687,8 @@ export class ConfigState {
     if (!SUPPORTED.includes(interfaceType)) {
       diagnostics.push({ path: this.entryPath(model, family, provider), code: 'UNSUPPORTED_FEATURE', severity: 'error', message: `M1 尚未实现 ${interfaceType}` });
     }
-    if (capabilities.deferLoading && interfaceType === 'openai-responses') {
-      diagnostics.push({ path: `${this.entryPath(model, family, provider)}.capabilities.deferLoading`, code: 'UNSUPPORTED_FEATURE', severity: 'error', message: 'deferLoading 不适用于 openai-responses' });
+    if (capabilities.deferLoading && (interfaceType === 'openai-responses' || interfaceType === 'gemini-generate-content')) {
+      diagnostics.push({ path: `${this.entryPath(model, family, provider)}.capabilities.deferLoading`, code: 'UNSUPPORTED_FEATURE', severity: 'error', message: `deferLoading 不适用于 ${interfaceType}` });
     }
     if (caching === 'explicit' && interfaceType !== 'anthropic-messages') {
       diagnostics.push({ path: `${this.entryPath(model, family, provider)}.caching`, code: 'UNSUPPORTED_FEATURE', severity: 'error', message: 'explicit 缓存断点只在 anthropic-messages 上可用' });
@@ -686,6 +700,9 @@ export class ConfigState {
       if (interfaceType === 'anthropic-messages') {
         diagnostics.push({ path: `${this.entryPath(model, family, provider)}.capabilities.thinkingStyle`, code: 'UNSUPPORTED_FEATURE', severity: 'error', message: `${capabilities.thinkingStyle} 不是 Messages 的思考形态` });
       }
+    }
+    if (capabilities.thinkingStyle === 'enable_thinking' && interfaceType === 'gemini-generate-content') {
+      diagnostics.push({ path: `${this.entryPath(model, family, provider)}.capabilities.thinkingStyle`, code: 'UNSUPPORTED_FEATURE', severity: 'error', message: 'enable_thinking 不是 Gemini generateContent 的思考形态' });
     }
     if (capabilities.thinkingStyle === 'extended' || capabilities.thinkingStyle === 'adaptive') {
       if (interfaceType === 'openai-chat-completions') {

@@ -81,7 +81,8 @@ export function classifyStatus(
 ): LLMError {
   const mapped = spec.errors?.[String(status)];
   const message = errorMessageFromBody(body) ?? body.slice(0, 300) ?? `HTTP ${status}`;
-  const contextHint = /context.{0,20}(length|window)|maximum context|too many tokens|context_length_exceeded/i.test(body);
+  const contextHint =
+    /context.{0,20}(length|window)|maximum context|too many tokens|context_length_exceeded|exceeds the maximum number of tokens|input token count/i.test(body);
   let code: ErrorCode;
   if (mapped) code = mapped as ErrorCode;
   else if (status === 401 || status === 403) code = 'MISSING_CREDENTIAL';
